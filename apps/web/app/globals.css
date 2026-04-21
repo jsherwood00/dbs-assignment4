@@ -10,6 +10,7 @@
   --gold: #f5a524;
   --green: #34d399;
   --red: #f87171;
+  --steam: rgba(230, 240, 250, 0.9);
 }
 
 @theme inline {
@@ -55,7 +56,7 @@ body {
   background: var(--border) !important;
 }
 
-/* Popup */
+/* Popup container */
 .leaflet-popup-content-wrapper {
   background: var(--bg-surface) !important;
   color: var(--text) !important;
@@ -66,7 +67,7 @@ body {
 
 .leaflet-popup-content {
   margin: 10px 12px !important;
-  min-width: 200px;
+  min-width: 210px;
 }
 
 .leaflet-popup-tip {
@@ -83,18 +84,77 @@ body {
   color: var(--text) !important;
 }
 
-/* ---------- Train markers ---------- */
+/* Popup inner — built imperatively from buildPopupHTML() */
+.amtrak-popup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text);
+}
 
-.train-marker {
+.amtrak-popup__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.amtrak-popup__title {
+  font-weight: 600;
+}
+
+.amtrak-muted {
+  color: var(--muted);
+}
+
+.amtrak-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.amtrak-saved-pill {
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid #3a3322;
+  background: #1c1810;
+  color: var(--gold);
+  font-size: 11px;
+}
+
+.amtrak-delay-late {
+  color: var(--gold);
+}
+
+.amtrak-delay-early {
+  color: var(--green);
+}
+
+/* ---------- Train figure (locomotive) ---------- */
+
+.train-figure {
+  position: relative;
   width: 100%;
   height: 100%;
   color: var(--accent);
   transform: rotate(var(--rot, 0deg));
-  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));
-  transition: transform 300ms ease;
+  transform-origin: 50% 50%;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.7));
+  transition: transform 250ms ease;
+  overflow: visible;
 }
 
-.train-marker--saved {
+.train-figure svg {
+  overflow: visible;
+}
+
+.train-figure--saved {
   color: var(--gold);
   animation: amtrak-pulse 1.8s ease-in-out infinite;
 }
@@ -108,5 +168,49 @@ body {
   50% {
     filter: drop-shadow(0 0 16px rgba(245, 165, 36, 1))
       drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));
+  }
+}
+
+/* ---------- Steam puffs ---------- */
+
+.train-figure__steam {
+  opacity: 0;
+  transition: opacity 200ms ease;
+}
+
+.train-figure--moving .train-figure__steam {
+  opacity: 1;
+}
+
+.train-figure__puff {
+  fill: var(--steam);
+  transform-box: fill-box;
+  transform-origin: center;
+  opacity: 0;
+}
+
+.train-figure--moving .train-figure__puff {
+  animation: steam-puff 1.4s cubic-bezier(0.2, 0.7, 0.2, 1) infinite;
+}
+
+.train-figure--moving .train-figure__puff--2 {
+  animation-delay: 0.45s;
+}
+
+.train-figure--moving .train-figure__puff--3 {
+  animation-delay: 0.9s;
+}
+
+@keyframes steam-puff {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.4);
+  }
+  15% {
+    opacity: 0.85;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-2px, -14px) scale(1.6);
   }
 }

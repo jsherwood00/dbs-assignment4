@@ -1,17 +1,22 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useRef } from "react";
 import L from "leaflet";
-import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
-import type { Train, SavedPair, TrainStation } from "@/lib/types";
+import type { Train, SavedPair } from "@/lib/types";
 import { headingToDegrees } from "@/lib/heading";
 import { trainMatchesAnyPair } from "@/lib/pair";
 import { useTrains } from "./trains-context";
+import { buildPopupHTML, buildTrainFigureHTML } from "./train-figure";
 
-// Continental US starting view
 const INITIAL_CENTER: [number, number] = [39, -96];
 const INITIAL_ZOOM = 4;
+const ANIMATION_DURATION_MS = 10_000;
+// Minimum lat/lon delta (degrees) to consider a train "moved" vs. GPS jitter.
+// 0.0001° is roughly 11 meters — well under a typical Amtrak 30s travel distance
+// (>600m even at slow speeds) but above civilian GPS jitter (~5m).
+const MIN_LATLON_DELTA = 1e-4;
 
 interface TrainMapProps {
   savedPairs?: SavedPair[];
@@ -19,16 +24,13 @@ interface TrainMapProps {
 
 export default function TrainMap({ savedPairs = [] }: TrainMapProps) {
   const { trains, loading, error } = useTrains();
-
-  const visibleTrains = useMemo(() => {
-    return trains.filter(
-      (t) =>
-        typeof t.lat === "number" &&
-        typeof t.lon === "number" &&
-        Number.isFinite(t.lat) &&
-        Number.isFinite(t.lon),
-    );
-  }, [trains]);
+  const hasVisibleTrains = trains.some(
+    (t) =>
+      typeof t.lat === "number" &&
+      typeof t.lon === "number" &&
+      Number.isFinite(t.lat) &&
+      Number.isFinite(t.lon),
+  );
 
   return (
     <div className="relative h-full w-full">
@@ -46,24 +48,14 @@ export default function TrainMap({ savedPairs = [] }: TrainMapProps) {
           maxZoom={19}
         />
         <ZoomControlBottomRight />
-        {visibleTrains.map((train) => {
-          const matchedPair = trainMatchesAnyPair(train, savedPairs);
-          return (
-            <TrainMarker
-              key={train.id}
-              train={train}
-              highlighted={!!matchedPair}
-              pair={matchedPair}
-            />
-          );
-        })}
+        <AnimatedTrainsLayer trains={trains} savedPairs={savedPairs} />
       </MapContainer>
 
       {loading ? (
         <StatusPill>Loading live trains…</StatusPill>
       ) : error ? (
         <StatusPill tone="error">Failed to load: {error}</StatusPill>
-      ) : visibleTrains.length === 0 ? (
+      ) : !hasVisibleTrains ? (
         <StatusPill tone="warn">No active trains right now.</StatusPill>
       ) : null}
     </div>
@@ -104,125 +96,195 @@ function StatusPill({
   );
 }
 
-interface TrainMarkerProps {
-  train: Train;
-  highlighted: boolean;
-  pair: SavedPair | null;
+// -------------------------------------------------------------------
+// AnimatedTrainsLayer — imperative marker management + RAF animation
+// -------------------------------------------------------------------
+
+interface MarkerState {
+  marker: L.Marker;
+  displayLat: number;
+  displayLon: number;
+  targetLat: number;
+  targetLon: number;
+  anim: { startLat: number; startLon: number; start: number } | null;
+  lastIconKey: string; // tracks (heading, saved, moving) so we only rebuild on change
 }
 
-function TrainMarker({ train, highlighted, pair }: TrainMarkerProps) {
-  const icon = useMemo(
-    () => buildIcon(headingToDegrees(train.heading), highlighted),
-    [train.heading, highlighted],
-  );
-
-  const nextStation = findNextStation(train);
-  const delayMinutes = computeDelayMinutes(train);
-
-  return (
-    <Marker
-      position={[train.lat as number, train.lon as number]}
-      icon={icon}
-      zIndexOffset={highlighted ? 1000 : 0}
-    >
-      <Popup className="amtrak-popup">
-        <div className="space-y-2 text-[13px] text-[#e5edf7]">
-          <div className="flex items-baseline justify-between gap-3">
-            <div className="font-semibold">
-              {train.route_name}{" "}
-              <span className="font-normal text-[#7b89a1]">
-                #{train.train_num}
-              </span>
-            </div>
-            {train.status ? (
-              <span className="rounded-full border border-[#1f2b45] px-2 py-0.5 text-[11px] uppercase tracking-wider text-[#7b89a1]">
-                {train.status}
-              </span>
-            ) : null}
-          </div>
-          <div className="text-[#7b89a1]">
-            {train.origin_code ?? "?"} → {train.dest_code ?? "?"}
-          </div>
-          {pair ? (
-            <div className="rounded-md border border-[#3a3322] bg-[#1c1810] px-2 py-1 text-[11px] text-[#f5a524]">
-              Serves your saved pair: {pair.from_code} → {pair.to_code}
-            </div>
-          ) : null}
-          {typeof train.velocity === "number" ? (
-            <div className="text-[#7b89a1]">
-              {Math.round(train.velocity)} mph
-            </div>
-          ) : null}
-          {nextStation ? (
-            <div>
-              <span className="text-[#7b89a1]">Next:</span>{" "}
-              {nextStation.name}{" "}
-              <span className="text-[#7b89a1]">({nextStation.code})</span>
-            </div>
-          ) : null}
-          {delayMinutes !== null ? (
-            <div
-              className={
-                delayMinutes > 5
-                  ? "text-[#f5a524]"
-                  : delayMinutes < -5
-                    ? "text-[#34d399]"
-                    : "text-[#7b89a1]"
-              }
-            >
-              {delayMinutes === 0
-                ? "On time"
-                : `${delayMinutes > 0 ? "+" : ""}${delayMinutes} min`}
-            </div>
-          ) : null}
-        </div>
-      </Popup>
-    </Marker>
-  );
+interface AnimatedTrainsLayerProps {
+  trains: Train[];
+  savedPairs: SavedPair[];
 }
 
-function buildIcon(headingDeg: number, highlighted: boolean) {
-  const cls = highlighted ? "train-marker train-marker--saved" : "train-marker";
-  const size = highlighted ? 28 : 18;
-  const html = `
-    <div class="${cls}" style="--rot: ${headingDeg}deg;">
-      <svg viewBox="0 0 24 24" width="100%" height="100%" aria-hidden="true">
-        <path d="M12 2 L20 20 L12 16 L4 20 Z" fill="currentColor" />
-      </svg>
-    </div>
-  `;
-  return L.divIcon({
-    className: "",
-    html,
-    iconSize: [size, size],
-    iconAnchor: [size / 2, size / 2],
-    popupAnchor: [0, -size / 2],
-  });
-}
+function AnimatedTrainsLayer({
+  trains,
+  savedPairs,
+}: AnimatedTrainsLayerProps) {
+  const map = useMap();
+  const layerRef = useRef<L.LayerGroup | null>(null);
+  const statesRef = useRef<Map<string, MarkerState>>(new Map());
+  const rafRef = useRef<number | null>(null);
 
-function findNextStation(train: Train): TrainStation | null {
-  if (!train.stations || train.stations.length === 0) return null;
-  const now = Date.now();
-  for (const s of train.stations) {
-    const ts = s.arr || s.schArr || s.dep || s.schDep;
-    if (!ts) continue;
-    const t = new Date(ts).getTime();
-    if (Number.isFinite(t) && t >= now) return s;
-  }
-  return null;
-}
+  // Create layer group once
+  useEffect(() => {
+    const lg = L.layerGroup().addTo(map);
+    layerRef.current = lg;
+    return () => {
+      lg.remove();
+      layerRef.current = null;
+      statesRef.current.clear();
+    };
+  }, [map]);
 
-function computeDelayMinutes(train: Train): number | null {
-  if (!train.stations) return null;
-  for (const s of train.stations) {
-    const actual = s.arr || s.dep;
-    const scheduled = s.schArr || s.schDep;
-    if (!actual || !scheduled) continue;
-    const a = new Date(actual).getTime();
-    const sc = new Date(scheduled).getTime();
-    if (Number.isFinite(a) && Number.isFinite(sc) && a > Date.now() - 48*60*60*1000) {
-      return Math.round((a - sc) / 60000);
+  // Sync markers with trains on every update
+  useEffect(() => {
+    const lg = layerRef.current;
+    if (!lg) return;
+
+    const incomingIds = new Set<string>();
+
+    for (const train of trains) {
+      if (
+        typeof train.lat !== "number" ||
+        typeof train.lon !== "number" ||
+        !Number.isFinite(train.lat) ||
+        !Number.isFinite(train.lon)
+      ) {
+        continue;
+      }
+      incomingIds.add(train.id);
+
+      const matchedPair = trainMatchesAnyPair(train, savedPairs);
+      const isSaved = matchedPair !== null;
+      const headingDeg = headingToDegrees(train.heading);
+
+      let state = statesRef.current.get(train.id);
+
+      if (!state) {
+        // First time we see this train — create marker at its current position, no animation
+        const iconKey = iconCacheKey(headingDeg, isSaved, false);
+        const marker = L.marker([train.lat, train.lon], {
+          icon: L.divIcon({
+            className: "",
+            html: buildTrainFigureHTML(headingDeg, isSaved, false),
+            iconSize: isSaved ? [52, 36] : [36, 24],
+            iconAnchor: isSaved ? [26, 18] : [18, 12],
+            popupAnchor: [0, -12],
+          }),
+          zIndexOffset: isSaved ? 1000 : 0,
+          riseOnHover: true,
+        });
+        marker.bindPopup(buildPopupHTML(train, matchedPair), {
+          closeButton: true,
+          offset: [0, -4],
+        });
+        lg.addLayer(marker);
+
+        state = {
+          marker,
+          displayLat: train.lat,
+          displayLon: train.lon,
+          targetLat: train.lat,
+          targetLon: train.lon,
+          anim: null,
+          lastIconKey: iconKey,
+        };
+        statesRef.current.set(train.id, state);
+      } else {
+        // Existing marker — refresh popup always (data may have changed)
+        state.marker.setPopupContent(buildPopupHTML(train, matchedPair));
+
+        // If target moved, start / retarget an animation FROM the currently-displayed position
+        const latDelta = Math.abs(train.lat - state.targetLat);
+        const lonDelta = Math.abs(train.lon - state.targetLon);
+        if (latDelta > MIN_LATLON_DELTA || lonDelta > MIN_LATLON_DELTA) {
+          state.targetLat = train.lat;
+          state.targetLon = train.lon;
+          state.anim = {
+            startLat: state.displayLat,
+            startLon: state.displayLon,
+            start: performance.now(),
+          };
+        }
+
+        // Rebuild icon only when heading / saved / moving state changes
+        const moving = state.anim !== null;
+        const nextKey = iconCacheKey(headingDeg, isSaved, moving);
+        if (nextKey !== state.lastIconKey) {
+          state.marker.setIcon(
+            L.divIcon({
+              className: "",
+              html: buildTrainFigureHTML(headingDeg, isSaved, moving),
+              iconSize: isSaved ? [52, 36] : [36, 24],
+              iconAnchor: isSaved ? [26, 18] : [18, 12],
+              popupAnchor: [0, -12],
+            }),
+          );
+          state.marker.setZIndexOffset(isSaved ? 1000 : 0);
+          state.lastIconKey = nextKey;
+        }
+      }
     }
-  }
+
+    // Remove markers for trains that disappeared from the feed
+    statesRef.current.forEach((state, id) => {
+      if (!incomingIds.has(id)) {
+        lg.removeLayer(state.marker);
+        statesRef.current.delete(id);
+      }
+    });
+  }, [trains, savedPairs, map]);
+
+  // Single RAF loop drives ALL in-flight animations
+  useEffect(() => {
+    const tick = () => {
+      const now = performance.now();
+      statesRef.current.forEach((state, id) => {
+        if (!state.anim) return;
+        const progress = Math.min(
+          1,
+          (now - state.anim.start) / ANIMATION_DURATION_MS,
+        );
+        const eased = easeInOutCubic(progress);
+        const lat =
+          state.anim.startLat + (state.targetLat - state.anim.startLat) * eased;
+        const lon =
+          state.anim.startLon + (state.targetLon - state.anim.startLon) * eased;
+        state.displayLat = lat;
+        state.displayLon = lon;
+        state.marker.setLatLng([lat, lon]);
+
+        if (progress >= 1) {
+          state.anim = null;
+          // Swap icon back to non-moving (steam stops)
+          const el = state.marker.getElement();
+          el?.querySelector(".train-figure")?.classList.remove(
+            "train-figure--moving",
+          );
+          // Update the cache key so next icon rebuild doesn't add the moving class
+          const existingKey = state.lastIconKey;
+          state.lastIconKey = existingKey.replace("|moving", "|still");
+          void id;
+        }
+      });
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+    };
+  }, []);
+
   return null;
+}
+
+function iconCacheKey(
+  headingDeg: number,
+  saved: boolean,
+  moving: boolean,
+): string {
+  return `${Math.round(headingDeg)}|${saved ? "saved" : "plain"}|${moving ? "moving" : "still"}`;
+}
+
+function easeInOutCubic(t: number): number {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 }
