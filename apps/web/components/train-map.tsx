@@ -366,32 +366,40 @@ function ReplayLayer() {
         smoothFactor: 1.2,
       }).addTo(lg);
 
-      // Ghost marker = the train SVG in ghost mode.
-      const buildGhostIcon = (headingDeg: number) =>
-        L.divIcon({
-          className: "",
-          html: buildTrainFigureHTML(headingDeg, false, false, /* ghost */ true),
-          iconSize: [36, 24],
-          iconAnchor: [18, 12],
-        });
-
-      // Seed heading toward the next sample (if any).
+      // Ghost marker = the train SVG in ghost mode. We only build the icon
+      // ONCE. After that, heading changes are applied by updating a CSS
+      // variable on the existing element — rebuilding the divIcon every
+      // few degrees was destroying + re-creating the DOM, which was the
+      // source of the "looks like glitching" behavior.
       const seedHeading =
         rows.length > 1
           ? bearingDeg(rows[0].lat, rows[0].lon, rows[1].lat, rows[1].lon)
           : 0;
       const ghost = L.marker([rows[0].lat, rows[0].lon], {
-        icon: buildGhostIcon(seedHeading),
+        icon: L.divIcon({
+          className: "",
+          html: buildTrainFigureHTML(seedHeading, false, false, true),
+          iconSize: [36, 24],
+          iconAnchor: [18, 12],
+        }),
         interactive: false,
         zIndexOffset: 2000,
       }).addTo(lg);
 
-      // ---- Smooth RAF animation using the train's actual timestamps, not
-      // pre-computed frames. Walking the virtual clock from rows[0].t to
-      // rows[last].t over DURATION_MS and interpolating between bracketing
-      // samples gives continuous motion. Identical consecutive samples
-      // (train parked at a station) still interpolate to themselves, so
-      // real stops stay still.
+      // Cache the inner `.train-figure` element so rotation updates are
+      // one-line CSS variable writes instead of DOM churn.
+      const figureEl = ghost
+        .getElement()
+        ?.querySelector(".train-figure") as HTMLElement | null;
+      const applyHeading = (headingDeg: number) => {
+        figureEl?.style.setProperty("--rot", `${headingDeg - 90}deg`);
+      };
+
+      // ---- Smooth RAF animation using the train's actual timestamps.
+      // Virtual clock walks from rows[0].t to rows[last].t over
+      // DURATION_MS and linearly interpolates between bracketing samples.
+      // Identical consecutive samples (parked at a station) interpolate
+      // to themselves, so real stops stay still.
       const DURATION_MS = 8000;
       const firstT = rows[0].t;
       const lastT = rows[rows.length - 1].t;
@@ -422,12 +430,11 @@ function ReplayLayer() {
         const lon = a.lon + (b.lon - a.lon) * frac;
         ghost.setLatLng([lat, lon]);
 
-        // Heading: only rebuild the icon when the current segment is long
-        // enough to define a direction AND the direction has shifted.
+        // Heading: CSS var update (no DOM churn) on meaningful shift.
         if (a !== b && approxMeters(a.lat, a.lon, b.lat, b.lon) > 40) {
           const heading = bearingDeg(a.lat, a.lon, b.lat, b.lon);
           if (Math.abs(heading - lastHeading) > 8) {
-            ghost.setIcon(buildGhostIcon(heading));
+            applyHeading(heading);
             lastHeading = heading;
           }
         }

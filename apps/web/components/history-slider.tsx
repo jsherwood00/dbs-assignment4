@@ -118,27 +118,6 @@ export function HistorySlider() {
 
         {/* Main dock */}
         <div className="flex items-center gap-3 rounded-full border border-[#1c2a3e] bg-[#0d1520]/95 px-4 py-2.5 shadow-xl backdrop-blur">
-          <button
-            type="button"
-            onClick={() => setViewMode({ kind: "live" })}
-            title="Return to live view"
-            className={`flex h-7 items-center gap-1.5 rounded-full border px-3 text-[10px] font-bold uppercase tracking-[0.15em] transition-colors ${
-              viewMode.kind === "live"
-                ? "border-[#225a3f] bg-[#0d2418] text-[#64e2a4]"
-                : "border-[#1c2a3e] bg-[#05080e] text-[#5a6d82] hover:border-[#5ecde0] hover:text-[#d8e4f0]"
-            }`}
-          >
-            <span
-              aria-hidden
-              className={`inline-block h-1.5 w-1.5 rounded-full ${
-                viewMode.kind === "live"
-                  ? "bg-[#64e2a4] animate-pulse"
-                  : "bg-[#5a6d82]"
-              }`}
-            />
-            Live
-          </button>
-
           <div className="flex flex-1 items-center gap-3">
             <span className="font-display text-[10px] font-bold uppercase tracking-[0.18em] text-[#5a6d82]">
               −1h
