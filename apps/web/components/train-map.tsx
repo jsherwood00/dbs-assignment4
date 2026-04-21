@@ -408,7 +408,13 @@ function ReplayLayer() {
       let raf: number | null = null;
       let cancelled = false;
       let cursor = 0;
-      let lastHeading = seedHeading;
+      // Smoothed heading: we ease this toward the current segment's bearing
+      // each frame using the shortest angular path. A single noisy GPS
+      // sample now nudges the rotation by less than a degree instead of
+      // snapping it 90° sideways.
+      let smoothedHeading = seedHeading;
+      applyHeading(smoothedHeading);
+      const HEADING_EASE = 0.14;
       const animStart = performance.now();
 
       const tick = () => {
@@ -430,13 +436,16 @@ function ReplayLayer() {
         const lon = a.lon + (b.lon - a.lon) * frac;
         ghost.setLatLng([lat, lon]);
 
-        // Heading: CSS var update (no DOM churn) on meaningful shift.
+        // Heading: ease smoothedHeading toward the current segment bearing
+        // along the shortest angular path. Cheap CSS var update per frame,
+        // no DOM churn, and a single bad sample can't flip the train.
         if (a !== b && approxMeters(a.lat, a.lon, b.lat, b.lon) > 40) {
-          const heading = bearingDeg(a.lat, a.lon, b.lat, b.lon);
-          if (Math.abs(heading - lastHeading) > 8) {
-            applyHeading(heading);
-            lastHeading = heading;
-          }
+          const target = bearingDeg(a.lat, a.lon, b.lat, b.lon);
+          let diff = target - smoothedHeading;
+          if (diff > 180) diff -= 360;
+          if (diff < -180) diff += 360;
+          smoothedHeading = (smoothedHeading + diff * HEADING_EASE + 360) % 360;
+          applyHeading(smoothedHeading);
         }
 
         // Grow trail: every traversed sample + current interpolated point.
