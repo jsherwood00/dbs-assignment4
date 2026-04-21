@@ -168,20 +168,22 @@ export function HistorySlider() {
             {"▶▶ Replay 1h"}
           </button>
 
-          <div className="flex min-w-[82px] flex-col items-end leading-none">
-            <span
-              className={`font-display text-[11px] font-bold uppercase tracking-[0.18em] ${
-                viewMode.kind === "live" ? "text-[#64e2a4]" : "text-[#f0c565]"
-              }`}
-            >
-              {label}
-            </span>
-            {absoluteTime ? (
-              <span className="mt-0.5 text-[10px] text-[#5a6d82]">
-                {absoluteTime}
+          {/* Right-side label — only show time offset in history mode.
+              In live mode the nav's freshness badge already says LIVE,
+              and the left-side Live button is also right there, so a
+              third "LIVE" here was redundant. */}
+          {viewMode.kind === "history" ? (
+            <div className="flex min-w-[82px] flex-col items-end leading-none">
+              <span className="font-display text-[11px] font-bold uppercase tracking-[0.18em] text-[#f0c565]">
+                {label}
               </span>
-            ) : null}
-          </div>
+              {absoluteTime ? (
+                <span className="mt-0.5 text-[10px] text-[#5a6d82]">
+                  {absoluteTime}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </div>
     </div>

@@ -18,10 +18,10 @@ const INITIAL_ZOOM = 4;
 const ANIMATION_DURATION_MS = 2_000;
 // Minimum on-the-ground distance (meters) between consecutive positions for
 // a train to count as "actually moving" and get the angry / powering visual.
-// Well above civilian GPS jitter (~5–15 m) and well under even a crawling
-// train's 15 s travel distance (>30 m at 5 mph, >300 m at 50 mph), so real
-// motion lights up but GPS noise doesn't.
-const MIN_MOVE_METERS = 60;
+// 100 m (~330 ft) is well past GPS jitter + station-shuffle wobble but still
+// well under a 15 s travel distance at normal speed, so only meaningful
+// movement lights a train up.
+const MIN_MOVE_METERS = 100;
 
 interface TrainMapProps {
   savedPairs?: SavedPair[];
@@ -294,12 +294,6 @@ function StationLayer({ trains }: { trains: Train[] }) {
 // trail behind it.
 // -------------------------------------------------------------------
 
-interface ReplayFrame {
-  lat: number;
-  lon: number;
-  heading: number; // degrees, 0 = north
-}
-
 function ReplayLayer() {
   const map = useMap();
   const { trains, setReplayingTrainId } = useTrains();
@@ -340,8 +334,10 @@ function ReplayLayer() {
       );
 
       const rows = (Array.isArray(data) ? data : []).filter(
-        (r: { lat?: unknown; lon?: unknown }) =>
-          typeof r.lat === "number" && typeof r.lon === "number",
+        (r: { lat?: unknown; lon?: unknown; t?: unknown }) =>
+          typeof r.lat === "number" &&
+          typeof r.lon === "number" &&
+          typeof r.t === "number",
       ) as Array<{ lat: number; lon: number; t: number }>;
 
       if (error || rows.length < 2) {
@@ -352,32 +348,7 @@ function ReplayLayer() {
         }, 1800);
         return;
       }
-
-      // ---- 2. Pre-compute frames at 60fps so the animation has no hitches.
-      const DURATION_MS = 8000;
-      const FPS = 60;
-      const FRAMES = Math.ceil((DURATION_MS / 1000) * FPS);
-      const frames: ReplayFrame[] = new Array(FRAMES);
-      for (let f = 0; f < FRAMES; f++) {
-        const t = f / (FRAMES - 1);
-        const idx = t * (rows.length - 1);
-        const i0 = Math.min(rows.length - 2, Math.floor(idx));
-        const i1 = i0 + 1;
-        const frac = idx - i0;
-        const lat = rows[i0].lat + (rows[i1].lat - rows[i0].lat) * frac;
-        const lon = rows[i0].lon + (rows[i1].lon - rows[i0].lon) * frac;
-        const heading = bearingDeg(
-          rows[i0].lat,
-          rows[i0].lon,
-          rows[i1].lat,
-          rows[i1].lon,
-        );
-        frames[f] = { lat, lon, heading };
-      }
-
-      // Trail always covers the already-traversed segment of the raw points
-      // (so the "route" line reads clearly, not a series of interpolated dots).
-      const rawCoords = rows.map((r) => [r.lat, r.lon] as [number, number]);
+      rows.sort((a, b) => a.t - b.t);
 
       btn.textContent = "▶ Replaying…";
       setReplayingTrainId(trainId);
@@ -396,50 +367,82 @@ function ReplayLayer() {
       }).addTo(lg);
 
       // Ghost marker = the train SVG in ghost mode.
-      const saved = false; // ghosts don't carry the saved-pair halo
       const buildGhostIcon = (headingDeg: number) =>
         L.divIcon({
           className: "",
-          html: buildTrainFigureHTML(headingDeg, saved, false, /* ghost */ true),
+          html: buildTrainFigureHTML(headingDeg, false, false, /* ghost */ true),
           iconSize: [36, 24],
           iconAnchor: [18, 12],
         });
 
-      const ghost = L.marker([frames[0].lat, frames[0].lon], {
-        icon: buildGhostIcon(frames[0].heading),
+      // Seed heading toward the next sample (if any).
+      const seedHeading =
+        rows.length > 1
+          ? bearingDeg(rows[0].lat, rows[0].lon, rows[1].lat, rows[1].lon)
+          : 0;
+      const ghost = L.marker([rows[0].lat, rows[0].lon], {
+        icon: buildGhostIcon(seedHeading),
         interactive: false,
         zIndexOffset: 2000,
       }).addTo(lg);
 
-      // ---- 3. Animate: advance a frame index by wall-clock time.
-      const start = performance.now();
+      // ---- Smooth RAF animation using the train's actual timestamps, not
+      // pre-computed frames. Walking the virtual clock from rows[0].t to
+      // rows[last].t over DURATION_MS and interpolating between bracketing
+      // samples gives continuous motion. Identical consecutive samples
+      // (train parked at a station) still interpolate to themselves, so
+      // real stops stay still.
+      const DURATION_MS = 8000;
+      const firstT = rows[0].t;
+      const lastT = rows[rows.length - 1].t;
+      const virtualSpan = Math.max(1, lastT - firstT);
+
       let raf: number | null = null;
       let cancelled = false;
-      let lastHeading = frames[0].heading;
+      let cursor = 0;
+      let lastHeading = seedHeading;
+      const animStart = performance.now();
 
       const tick = () => {
         if (cancelled) return;
-        const elapsed = performance.now() - start;
-        const t = Math.min(1, elapsed / DURATION_MS);
-        const fIdx = Math.min(FRAMES - 1, Math.floor(t * (FRAMES - 1)));
-        const f = frames[fIdx];
-        ghost.setLatLng([f.lat, f.lon]);
+        const elapsed = performance.now() - animStart;
+        const progress = Math.min(1, elapsed / DURATION_MS);
+        const virtualT = firstT + progress * virtualSpan;
 
-        // Only rebuild the icon when heading meaningfully changes (avoid DOM churn).
-        if (Math.abs(f.heading - lastHeading) > 5) {
-          ghost.setIcon(buildGhostIcon(f.heading));
-          lastHeading = f.heading;
+        // Advance cursor monotonically.
+        while (cursor < rows.length - 1 && rows[cursor + 1].t <= virtualT) {
+          cursor++;
+        }
+        const a = rows[cursor];
+        const b = rows[Math.min(cursor + 1, rows.length - 1)];
+        const span = b.t - a.t;
+        const frac =
+          span > 0 ? Math.max(0, Math.min(1, (virtualT - a.t) / span)) : 0;
+        const lat = a.lat + (b.lat - a.lat) * frac;
+        const lon = a.lon + (b.lon - a.lon) * frac;
+        ghost.setLatLng([lat, lon]);
+
+        // Heading: only rebuild the icon when the current segment is long
+        // enough to define a direction AND the direction has shifted.
+        if (a !== b && approxMeters(a.lat, a.lon, b.lat, b.lon) > 40) {
+          const heading = bearingDeg(a.lat, a.lon, b.lat, b.lon);
+          if (Math.abs(heading - lastHeading) > 8) {
+            ghost.setIcon(buildGhostIcon(heading));
+            lastHeading = heading;
+          }
         }
 
-        // Grow trail: raw points up to the current index + current position.
-        const rawIdx = Math.floor(t * (rawCoords.length - 1));
-        const growing = rawCoords.slice(0, rawIdx + 1).concat([[f.lat, f.lon]]);
+        // Grow trail: every traversed sample + current interpolated point.
+        const growing: [number, number][] = [];
+        for (let i = 0; i <= cursor; i++) {
+          growing.push([rows[i].lat, rows[i].lon]);
+        }
+        growing.push([lat, lon]);
         trail.setLatLngs(growing);
 
-        if (t < 1) {
+        if (progress < 1) {
           raf = requestAnimationFrame(tick);
         } else {
-          // Hold the finished frame briefly, then fade out.
           setTimeout(() => {
             if (cancelled) return;
             cleanup();
