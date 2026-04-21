@@ -21,6 +21,11 @@ interface TrainsState {
   lastUpdatedAt: number | null; // ms epoch — most recent last_updated across all trains
   viewMode: ViewMode;
   setViewMode: (m: ViewMode) => void;
+  // Replay state — the AnimatedTrainsLayer hides live markers while these are set
+  replayingTrainId: string | null;
+  setReplayingTrainId: (id: string | null) => void;
+  replayAllActive: boolean;
+  setReplayAllActive: (active: boolean) => void;
 }
 
 const LIVE: ViewMode = { kind: "live" };
@@ -47,6 +52,8 @@ export function TrainsProvider({ children }: { children: ReactNode }) {
   const [trains, setTrains] = useState<Train[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [replayingTrainId, setReplayingTrainId] = useState<string | null>(null);
+  const [replayAllActive, setReplayAllActive] = useState(false);
 
   const setViewMode = useCallback((m: ViewMode) => {
     setViewModeState(m);
@@ -155,7 +162,18 @@ export function TrainsProvider({ children }: { children: ReactNode }) {
 
   return (
     <TrainsContext.Provider
-      value={{ trains, loading, error, lastUpdatedAt, viewMode, setViewMode }}
+      value={{
+        trains,
+        loading,
+        error,
+        lastUpdatedAt,
+        viewMode,
+        setViewMode,
+        replayingTrainId,
+        setReplayingTrainId,
+        replayAllActive,
+        setReplayAllActive,
+      }}
     >
       {children}
     </TrainsContext.Provider>

@@ -7,11 +7,13 @@ export function buildTrainFigureHTML(
   headingDeg: number,
   saved: boolean,
   moving: boolean,
+  ghost: boolean = false,
 ): string {
   const classes = [
     "train-figure",
     saved ? "train-figure--saved" : "",
     moving ? "train-figure--moving" : "",
+    ghost ? "is-ghost" : "",
   ]
     .filter(Boolean)
     .join(" ");

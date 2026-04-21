@@ -43,6 +43,7 @@ export default function TrainMap({ savedPairs = [] }: TrainMapProps) {
         center={INITIAL_CENTER}
         zoom={INITIAL_ZOOM}
         scrollWheelZoom
+        preferCanvas
         className="h-full w-full bg-[#05080e]"
         zoomControl={false}
       >
@@ -60,6 +61,7 @@ export default function TrainMap({ savedPairs = [] }: TrainMapProps) {
           viewMode={viewMode}
         />
         <ReplayLayer />
+        <ReplayAllLayer />
       </MapContainer>
 
       {loading ? (
@@ -236,6 +238,10 @@ function StationLayer({ trains }: { trains: Train[] }) {
 
     const stationMap = getStationMap(stations);
 
+    // Force SVG renderer for stations so CSS pulse animation works
+    // (the map-wide preferCanvas wouldn't honor CSS).
+    const svgRenderer = L.svg();
+
     // Add / update markers for every active station
     for (const code of active) {
       const s = stationMap.get(code);
@@ -250,6 +256,7 @@ function StationLayer({ trains }: { trains: Train[] }) {
         marker = L.circleMarker([s.lat, s.lon], {
           radius: 3,
           className,
+          renderer: svgRenderer,
           interactive: true,
           bubblingMouseEvents: false,
         });
@@ -281,27 +288,31 @@ function StationLayer({ trains }: { trains: Train[] }) {
 
 // -------------------------------------------------------------------
 // ReplayLayer — handles the "Replay last hour" popup button:
-// fetches all snapshots for a train from the history table and animates
-// a glowing ghost marker through them with a growing trail.
+// fetches all snapshots for a train from the history table, pre-computes
+// a smooth path + heading per-frame, hides the live marker, and plays a
+// ghostly cyan version of the train SVG through the path with a growing
+// trail behind it.
 // -------------------------------------------------------------------
 
-interface PositionRow {
+interface ReplayFrame {
   lat: number;
   lon: number;
-  snapshot_at: string;
+  heading: number; // degrees, 0 = north
 }
 
 function ReplayLayer() {
   const map = useMap();
-  const activeRef = useRef<{
-    ghost: L.CircleMarker;
-    trail: L.Polyline;
-    cancel: () => void;
-  } | null>(null);
+  const { trains, setReplayingTrainId } = useTrains();
+  const trainsRef = useRef(trains);
+  const activeRef = useRef<(() => void) | null>(null);
+
+  // Keep a live ref so the click handler always sees the latest train list.
+  useEffect(() => {
+    trainsRef.current = trains;
+  }, [trains]);
 
   useEffect(() => {
-    // Delegate clicks on any replay button
-    const onClick = (e: MouseEvent) => {
+    const onClick = async (e: MouseEvent) => {
       const target = e.target as HTMLElement | null;
       const btn = target?.closest("[data-amtrak-replay]") as
         | HTMLButtonElement
@@ -311,46 +322,29 @@ function ReplayLayer() {
       if (!trainId) return;
       e.preventDefault();
       e.stopPropagation();
-      runReplay(trainId, btn);
-    };
 
-    document.addEventListener("click", onClick);
-    return () => {
-      document.removeEventListener("click", onClick);
-      activeRef.current?.cancel();
-      activeRef.current = null;
-    };
-
-    async function runReplay(trainId: string, btn: HTMLButtonElement) {
-      // Tear down any in-flight replay
-      activeRef.current?.cancel();
+      // Cancel any in-flight replay first.
+      activeRef.current?.();
       activeRef.current = null;
 
+      const train = trainsRef.current.find((t) => t.id === trainId) ?? null;
       const originalText = btn.textContent ?? "";
       btn.disabled = true;
-      btn.textContent = "Loading…";
+      btn.textContent = "Preparing…";
 
-      const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-      const { data, error } = await getSupabase()
-        .from("train_positions")
-        .select("lat, lon, snapshot_at")
-        .eq("train_id", trainId)
-        .gte("snapshot_at", since)
-        .order("snapshot_at", { ascending: true });
-
-      if (error || !data || data.length < 2) {
-        btn.textContent = "No history yet";
-        setTimeout(() => {
-          btn.disabled = false;
-          btn.textContent = originalText;
-        }, 1800);
-        return;
-      }
-
-      const rows = (data as PositionRow[]).filter(
-        (r) => typeof r.lat === "number" && typeof r.lon === "number",
+      // ---- 1. Fetch positions via JSONB RPC (REST-style .select is capped
+      // at 1000, and even setof RPCs hit the same cap).
+      const { data, error } = await getSupabase().rpc(
+        "positions_for_train_json",
+        { p_train_id: trainId },
       );
-      if (rows.length < 2) {
+
+      const rows = (Array.isArray(data) ? data : []).filter(
+        (r: { lat?: unknown; lon?: unknown }) =>
+          typeof r.lat === "number" && typeof r.lon === "number",
+      ) as Array<{ lat: number; lon: number; t: number }>;
+
+      if (error || rows.length < 2) {
         btn.textContent = "No history yet";
         setTimeout(() => {
           btn.disabled = false;
@@ -358,72 +352,357 @@ function ReplayLayer() {
         }, 1800);
         return;
       }
+
+      // ---- 2. Pre-compute frames at 60fps so the animation has no hitches.
+      const DURATION_MS = 8000;
+      const FPS = 60;
+      const FRAMES = Math.ceil((DURATION_MS / 1000) * FPS);
+      const frames: ReplayFrame[] = new Array(FRAMES);
+      for (let f = 0; f < FRAMES; f++) {
+        const t = f / (FRAMES - 1);
+        const idx = t * (rows.length - 1);
+        const i0 = Math.min(rows.length - 2, Math.floor(idx));
+        const i1 = i0 + 1;
+        const frac = idx - i0;
+        const lat = rows[i0].lat + (rows[i1].lat - rows[i0].lat) * frac;
+        const lon = rows[i0].lon + (rows[i1].lon - rows[i0].lon) * frac;
+        const heading = bearingDeg(
+          rows[i0].lat,
+          rows[i0].lon,
+          rows[i1].lat,
+          rows[i1].lon,
+        );
+        frames[f] = { lat, lon, heading };
+      }
+
+      // Trail always covers the already-traversed segment of the raw points
+      // (so the "route" line reads clearly, not a series of interpolated dots).
+      const rawCoords = rows.map((r) => [r.lat, r.lon] as [number, number]);
 
       btn.textContent = "▶ Replaying…";
+      setReplayingTrainId(trainId);
 
+      const lg = L.layerGroup().addTo(map);
+
+      // Trail polyline (grows as we go). Colors set directly so canvas honors them.
       const trail = L.polyline([], {
+        color: "#8ee7f4",
+        opacity: 0.9,
+        weight: 2.5,
+        lineCap: "round",
         className: "amtrak-replay-trail",
         interactive: false,
         smoothFactor: 1.2,
-      }).addTo(map);
+      }).addTo(lg);
 
-      const ghost = L.circleMarker([rows[0].lat, rows[0].lon], {
-        radius: 7,
-        className: "amtrak-replay-ghost",
+      // Ghost marker = the train SVG in ghost mode.
+      const saved = false; // ghosts don't carry the saved-pair halo
+      const buildGhostIcon = (headingDeg: number) =>
+        L.divIcon({
+          className: "",
+          html: buildTrainFigureHTML(headingDeg, saved, false, /* ghost */ true),
+          iconSize: [36, 24],
+          iconAnchor: [18, 12],
+        });
+
+      const ghost = L.marker([frames[0].lat, frames[0].lon], {
+        icon: buildGhostIcon(frames[0].heading),
         interactive: false,
-      }).addTo(map);
+        zIndexOffset: 2000,
+      }).addTo(lg);
 
-      // Total replay duration: 8s regardless of data density
-      const DURATION_MS = 8000;
+      // ---- 3. Animate: advance a frame index by wall-clock time.
       const start = performance.now();
       let raf: number | null = null;
       let cancelled = false;
+      let lastHeading = frames[0].heading;
 
       const tick = () => {
         if (cancelled) return;
         const elapsed = performance.now() - start;
         const t = Math.min(1, elapsed / DURATION_MS);
-        const idx = t * (rows.length - 1);
-        const i0 = Math.floor(idx);
-        const i1 = Math.min(i0 + 1, rows.length - 1);
-        const frac = idx - i0;
-        const lat = rows[i0].lat + (rows[i1].lat - rows[i0].lat) * frac;
-        const lon = rows[i0].lon + (rows[i1].lon - rows[i0].lon) * frac;
-        ghost.setLatLng([lat, lon]);
+        const fIdx = Math.min(FRAMES - 1, Math.floor(t * (FRAMES - 1)));
+        const f = frames[fIdx];
+        ghost.setLatLng([f.lat, f.lon]);
 
-        // Grow the trail up to the current interpolated point
-        const coords = rows.slice(0, i0 + 1).map((r) => [r.lat, r.lon] as [number, number]);
-        coords.push([lat, lon]);
-        trail.setLatLngs(coords);
+        // Only rebuild the icon when heading meaningfully changes (avoid DOM churn).
+        if (Math.abs(f.heading - lastHeading) > 5) {
+          ghost.setIcon(buildGhostIcon(f.heading));
+          lastHeading = f.heading;
+        }
+
+        // Grow trail: raw points up to the current index + current position.
+        const rawIdx = Math.floor(t * (rawCoords.length - 1));
+        const growing = rawCoords.slice(0, rawIdx + 1).concat([[f.lat, f.lon]]);
+        trail.setLatLngs(growing);
 
         if (t < 1) {
           raf = requestAnimationFrame(tick);
         } else {
-          // Hold for a beat, then fade out
+          // Hold the finished frame briefly, then fade out.
           setTimeout(() => {
             if (cancelled) return;
-            map.removeLayer(trail);
-            map.removeLayer(ghost);
-            btn.disabled = false;
-            btn.textContent = originalText;
-            activeRef.current = null;
-          }, 1000);
+            cleanup();
+          }, 900);
         }
       };
 
-      const cancel = () => {
+      const cleanup = () => {
         cancelled = true;
         if (raf !== null) cancelAnimationFrame(raf);
-        map.removeLayer(trail);
-        map.removeLayer(ghost);
+        lg.remove();
+        setReplayingTrainId(null);
         btn.disabled = false;
         btn.textContent = originalText;
+        activeRef.current = null;
+        void train; // reserved for future "zoom to train origin" behavior
       };
 
-      activeRef.current = { ghost, trail, cancel };
+      activeRef.current = cleanup;
       raf = requestAnimationFrame(tick);
-    }
-  }, [map]);
+    };
+
+    document.addEventListener("click", onClick);
+    return () => {
+      document.removeEventListener("click", onClick);
+      activeRef.current?.();
+      activeRef.current = null;
+    };
+  }, [map, setReplayingTrainId]);
+
+  return null;
+}
+
+// Compass bearing (0–360, 0 = north, 90 = east) from (lat1, lon1) -> (lat2, lon2).
+function bearingDeg(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
+): number {
+  const toRad = Math.PI / 180;
+  const φ1 = lat1 * toRad;
+  const φ2 = lat2 * toRad;
+  const Δλ = (lon2 - lon1) * toRad;
+  const y = Math.sin(Δλ) * Math.cos(φ2);
+  const x =
+    Math.cos(φ1) * Math.sin(φ2) -
+    Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+}
+
+// -------------------------------------------------------------------
+// ReplayAllLayer — listens for window 'amtrak:replay-all', fetches all
+// last-hour positions in ONE shot, pre-computes 30 frames of positions
+// (one per 2-minute bucket) per train, then plays the whole fleet back
+// in 10 seconds as ghostly trains with growing trails.
+// -------------------------------------------------------------------
+
+function reportStatus(kind: "idle" | "preparing" | "playing" | "done", message: string, progress?: number) {
+  window.dispatchEvent(
+    new CustomEvent("amtrak:replay-all:status", {
+      detail: { kind, message, progress },
+    }),
+  );
+}
+
+function ReplayAllLayer() {
+  const map = useMap();
+  const { trains, setReplayAllActive } = useTrains();
+  const trainsRef = useRef(trains);
+
+  useEffect(() => {
+    trainsRef.current = trains;
+  }, [trains]);
+
+  useEffect(() => {
+    let cancelCurrent: (() => void) | null = null;
+
+    const handler = async () => {
+      cancelCurrent?.();
+      cancelCurrent = null;
+
+      reportStatus("preparing", "Fetching 1 hour of history…");
+
+      const { data, error } = await getSupabase().rpc("positions_last_hour_json");
+
+      if (error || !data || typeof data !== "object") {
+        reportStatus("done", error ? `Failed: ${error.message}` : "No history yet");
+        setTimeout(() => reportStatus("idle", ""), 2200);
+        return;
+      }
+
+      const byTrain = data as Record<
+        string,
+        Array<{ lat: number; lon: number; t: number }>
+      >;
+      const trainIds = Object.keys(byTrain);
+
+      if (trainIds.length === 0) {
+        reportStatus("done", "No history yet");
+        setTimeout(() => reportStatus("idle", ""), 2200);
+        return;
+      }
+
+      reportStatus("preparing", "Bucketing frames…");
+
+      // ---- Bucket into 30 frames of 2-minute windows.
+      const FRAMES = 30;
+      const BUCKET_SEC = 2 * 60;
+      const endSec = Math.floor(Date.now() / 1000);
+      const startSec = endSec - 60 * 60;
+
+      // Per-train: array of [lat, lon] indexed by frame (or null)
+      const perTrain = new Map<string, Array<[number, number] | null>>();
+      for (const trainId of trainIds) {
+        const positions = byTrain[trainId];
+        if (!Array.isArray(positions)) continue;
+        const arr = new Array<[number, number] | null>(FRAMES).fill(null);
+        for (const p of positions) {
+          if (typeof p.lat !== "number" || typeof p.lon !== "number") continue;
+          const idx = Math.floor((p.t - startSec) / BUCKET_SEC);
+          if (idx < 0 || idx >= FRAMES) continue;
+          // Last position within the bucket wins (positions are ordered asc).
+          arr[idx] = [p.lat, p.lon];
+        }
+        perTrain.set(trainId, arr);
+      }
+
+      // Carry-forward fill so every train has a position at every frame
+      // after its first sighting.
+      perTrain.forEach((arr) => {
+        let last: [number, number] | null = null;
+        for (let i = 0; i < FRAMES; i++) {
+          if (arr[i] === null) arr[i] = last;
+          else last = arr[i];
+        }
+      });
+
+      // Resolve per-train heading (use the current live train's heading as
+      // a fallback; for the replay we recompute it per-step from motion).
+      const trainsNow = trainsRef.current;
+      const headingById = new Map<string, string | null>();
+      for (const t of trainsNow) {
+        headingById.set(t.id, t.heading ?? null);
+      }
+      const isSavedById = new Map<string, boolean>();
+      // We don't really need saved status for the replay; treat all as plain.
+
+      reportStatus("preparing", "Building ghost fleet…");
+
+      // ---- Create overlay fleet
+      const lg = L.layerGroup().addTo(map);
+      const ghosts = new Map<string, L.Marker>();
+      const trails = new Map<string, L.Polyline>();
+      const trailCoords = new Map<string, [number, number][]>();
+
+      const buildIcon = (headingDeg: number) =>
+        L.divIcon({
+          className: "",
+          html: buildTrainFigureHTML(headingDeg, false, false, /* ghost */ true),
+          iconSize: [28, 18], // a touch smaller for the fleet
+          iconAnchor: [14, 9],
+        });
+
+      // Seed at frame 0 — trains that have a position at frame 0 only.
+      perTrain.forEach((arr, id) => {
+        const first = arr.find((p) => p !== null) ?? null;
+        if (!first) return;
+        const seedHeadingStr = headingById.get(id);
+        const seedHeading = seedHeadingStr ? headingToDegrees(seedHeadingStr) : 0;
+        const g = L.marker(first, {
+          icon: buildIcon(seedHeading),
+          interactive: false,
+          zIndexOffset: 1500,
+        }).addTo(lg);
+        const tr = L.polyline([first], {
+          color: "#8ee7f4",
+          opacity: 0.45,
+          weight: 1.5,
+          lineCap: "round",
+          className: "amtrak-replayall-trail",
+          interactive: false,
+          smoothFactor: 1,
+        }).addTo(lg);
+        ghosts.set(id, g);
+        trails.set(id, tr);
+        trailCoords.set(id, [first]);
+        isSavedById.set(id, false);
+      });
+
+      // ---- Hide live markers while the replay owns the stage.
+      setReplayAllActive(true);
+
+      const TOTAL_MS = 10_000;
+      const FRAME_MS = TOTAL_MS / FRAMES;
+      let currentFrame = 0;
+      let cancelled = false;
+      const lastHeadingById = new Map<string, number>();
+
+      reportStatus("playing", `Replaying 1h · 1/${FRAMES}`, 0);
+
+      const interval = setInterval(() => {
+        currentFrame++;
+        if (cancelled) return;
+        if (currentFrame >= FRAMES) {
+          clearInterval(interval);
+          reportStatus("done", "Replay complete", 1);
+          setTimeout(() => {
+            if (cancelled) return;
+            cleanup();
+            reportStatus("idle", "");
+          }, 1500);
+          return;
+        }
+
+        reportStatus(
+          "playing",
+          `Replaying 1h · ${currentFrame + 1}/${FRAMES}`,
+          currentFrame / (FRAMES - 1),
+        );
+
+        perTrain.forEach((arr, id) => {
+          const pos = arr[currentFrame];
+          if (!pos) return;
+          const g = ghosts.get(id);
+          const tr = trails.get(id);
+          if (!g || !tr) return;
+          // Compute heading from motion since last known position.
+          const coords = trailCoords.get(id)!;
+          const prev = coords[coords.length - 1];
+          const moved =
+            approxMeters(prev[0], prev[1], pos[0], pos[1]) > 20;
+          if (moved) {
+            const heading = bearingDeg(prev[0], prev[1], pos[0], pos[1]);
+            const last = lastHeadingById.get(id) ?? -999;
+            if (Math.abs(heading - last) > 8) {
+              g.setIcon(buildIcon(heading));
+              lastHeadingById.set(id, heading);
+            }
+          }
+          g.setLatLng(pos);
+          coords.push(pos);
+          tr.setLatLngs(coords);
+        });
+      }, FRAME_MS);
+
+      const cleanup = () => {
+        cancelled = true;
+        clearInterval(interval);
+        lg.remove();
+        setReplayAllActive(false);
+        cancelCurrent = null;
+      };
+
+      cancelCurrent = cleanup;
+    };
+
+    window.addEventListener("amtrak:replay-all", handler);
+    return () => {
+      window.removeEventListener("amtrak:replay-all", handler);
+      cancelCurrent?.();
+    };
+  }, [map, setReplayAllActive]);
 
   return null;
 }
@@ -488,10 +767,23 @@ function AnimatedTrainsLayer({
   viewMode,
 }: AnimatedTrainsLayerProps) {
   const map = useMap();
+  const { replayingTrainId, replayAllActive } = useTrains();
   const layerRef = useRef<L.LayerGroup | null>(null);
   const statesRef = useRef<Map<string, MarkerState>>(new Map());
   const rafRef = useRef<number | null>(null);
   const isHistory = viewMode.kind === "history";
+
+  // Hide markers that are currently being replayed (single train OR replay-all).
+  useEffect(() => {
+    statesRef.current.forEach((state, id) => {
+      const hidden = replayAllActive || id === replayingTrainId;
+      const el = state.marker.getElement() as HTMLElement | null;
+      if (el) {
+        el.style.opacity = hidden ? "0" : "1";
+        el.style.pointerEvents = hidden ? "none" : "";
+      }
+    });
+  }, [replayingTrainId, replayAllActive]);
 
   // Create layer group once
   useEffect(() => {
