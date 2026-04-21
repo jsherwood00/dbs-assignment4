@@ -26,13 +26,12 @@ export default function HomePage() {
       <div className="absolute inset-0">
         <TrainMap savedIds={savedIds} onlyFavorites={onlyFavorites} />
       </div>
-      <div className="pointer-events-none absolute right-4 top-4 z-[500] flex flex-col gap-3">
-        <SavedTrainsPanel
-          onSavedIdsChange={handleSavedIdsChange}
-          onlyFavorites={onlyFavorites}
-          onOnlyFavoritesChange={setOnlyFavorites}
-        />
-      </div>
+      {/* Panel positions itself (fixed) now that it's a slide-out drawer. */}
+      <SavedTrainsPanel
+        onSavedIdsChange={handleSavedIdsChange}
+        onlyFavorites={onlyFavorites}
+        onOnlyFavoritesChange={setOnlyFavorites}
+      />
     </div>
   );
 }

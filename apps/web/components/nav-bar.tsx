@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useAuth } from "./auth-context";
 import { FreshnessBadge } from "./freshness-badge";
+import { FullscreenButton } from "./fullscreen-button";
 
 export function NavBar() {
   const { user, loading, signOut } = useAuth();
@@ -24,6 +25,7 @@ export function NavBar() {
 
         <div className="flex-1" />
 
+        <FullscreenButton />
         <FreshnessBadge />
 
         <div className="flex items-center gap-2">

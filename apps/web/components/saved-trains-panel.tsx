@@ -22,6 +22,9 @@ export function SavedTrainsPanel({
   const { trains } = useTrains();
   const [savedRows, setSavedRows] = useState<SavedTrain[]>([]);
   const [listLoading, setListLoading] = useState(false);
+  // Start collapsed so the map owns the full viewport. Click the side
+  // tab to pull the panel in.
+  const [expanded, setExpanded] = useState(false);
 
   // Memoized Set<string> of train_ids the user has favorited.
   const savedIds = useMemo(
@@ -34,10 +37,6 @@ export function SavedTrainsPanel({
     onSavedIdsChange?.(savedIds);
   }, [savedIds, onSavedIdsChange]);
 
-  // Load the user's saved trains on sign-in. Also subscribe to changes
-  // so that clicking the favorite button in a popup updates this list
-  // without a manual refetch — we react to Realtime-less DB inserts/
-  // deletes triggered by the delegated popup button handler.
   const refetch = useCallback(async () => {
     if (!user) return;
     setListLoading(true);
@@ -59,8 +58,6 @@ export function SavedTrainsPanel({
     refetch();
   }, [loading, user, refetch]);
 
-  // Popup button and other sources can dispatch this when they've
-  // mutated saved_trains, so we re-pull.
   useEffect(() => {
     const handler = () => refetch();
     window.addEventListener("amtrak:favorites-changed", handler);
@@ -78,43 +75,131 @@ export function SavedTrainsPanel({
 
   if (loading) return null;
 
-  // ---- Signed-out: marketing pitch, only "Sign up" CTA.
-  if (!user) {
-    return (
-      <aside className="pointer-events-auto w-72 rounded-xl border border-[#1c2a3e] bg-[#0d1520]/95 p-4 shadow-xl backdrop-blur">
-        <div className="font-display text-[11px] font-bold uppercase tracking-[0.18em] text-[#5ecde0]">
-          Track your favorites
-        </div>
-        <p className="mt-2 text-sm text-[#d8e4f0]">
-          Sign up to favorite specific Amtrak trains. Your favorites turn
-          <span className="text-[#10e070] font-semibold"> green on the map</span>,
-          so you can spot them at a glance and filter out the rest.
-        </p>
-        <Link
-          href="/signup"
-          className="mt-3 block rounded-md bg-[#5ecde0] px-3 py-1.5 text-center text-xs font-medium text-[#05080e] hover:bg-[#8ee7f4]"
-        >
-          Sign up free
-        </Link>
-      </aside>
-    );
-  }
+  // Dimensions — panel width changes with auth state; signup pitch is
+  // intentionally smaller so logged-out users barely notice it.
+  const panelWidth = user ? 320 : 240;
+  const tabWidth = 22;
 
-  // ---- Signed-in: list of favorites + only-favorites toggle.
+  // Content of the panel — separated from the drawer chrome.
+  const panelContent = !user ? (
+    <SignupPitch />
+  ) : (
+    <FavoritesList
+      savedRows={savedRows}
+      listLoading={listLoading}
+      onlyFavorites={onlyFavorites}
+      onOnlyFavoritesChange={onOnlyFavoritesChange}
+      trains={trains}
+      onUnfavorite={unfavorite}
+    />
+  );
+
+  return (
+    <div
+      className="pointer-events-auto fixed right-0 top-[80px] z-[500] flex items-start"
+      style={{
+        transform: expanded
+          ? "translateX(0)"
+          : `translateX(${panelWidth}px)`,
+        transition: "transform 220ms cubic-bezier(0.4, 0, 0.2, 1)",
+        willChange: "transform",
+      }}
+    >
+      {/* Tab handle — always visible. Arrow points into the screen when
+          collapsed (pull-me-out hint) and outward when expanded (collapse). */}
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        aria-label={expanded ? "Hide favorites panel" : "Show favorites panel"}
+        title={expanded ? "Hide favorites" : "Show favorites"}
+        style={{ width: tabWidth }}
+        className="flex h-16 flex-col items-center justify-center rounded-l-md border border-r-0 border-[#1c2a3e] bg-[#0d1520]/95 text-[#5ecde0] shadow-lg backdrop-blur transition-colors hover:bg-[#1c2a3e] hover:text-[#8ee7f4]"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          width="14"
+          height="14"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.4"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden
+          style={{
+            transform: expanded ? "rotate(180deg)" : "rotate(0deg)",
+            transition: "transform 220ms",
+          }}
+        >
+          <path d="M15 18l-6-6 6-6" />
+        </svg>
+        {/* Unread-count / star badge beneath the arrow */}
+        {user && savedRows.length > 0 ? (
+          <span className="mt-1 text-[9px] font-bold text-[#10e070]">
+            {savedRows.length}
+          </span>
+        ) : !user ? (
+          <span className="mt-1 text-[9px] text-[#5ecde0]">★</span>
+        ) : null}
+      </button>
+
+      <aside
+        style={{ width: panelWidth }}
+        className="rounded-bl-xl rounded-tl-none rounded-tr-xl border border-r-0 border-[#1c2a3e] bg-[#0d1520]/95 shadow-xl backdrop-blur"
+      >
+        {panelContent}
+      </aside>
+    </div>
+  );
+}
+
+// ---- Pieces ----
+
+function SignupPitch() {
+  return (
+    <div className="p-3">
+      <div className="font-display text-[10px] font-bold uppercase tracking-[0.18em] text-[#5ecde0]">
+        Your favorites
+      </div>
+      <p className="mt-1.5 text-[12px] leading-snug text-[#d8e4f0]">
+        Sign up to favorite Amtrak trains. Yours turn{" "}
+        <span className="font-semibold text-[#10e070]">green</span> on the map.
+      </p>
+      <Link
+        href="/signup"
+        className="mt-2 block rounded-md bg-[#5ecde0] px-3 py-1 text-center text-[11px] font-medium text-[#05080e] hover:bg-[#8ee7f4]"
+      >
+        Sign up free
+      </Link>
+    </div>
+  );
+}
+
+function FavoritesList({
+  savedRows,
+  listLoading,
+  onlyFavorites,
+  onOnlyFavoritesChange,
+  trains,
+  onUnfavorite,
+}: {
+  savedRows: SavedTrain[];
+  listLoading: boolean;
+  onlyFavorites: boolean;
+  onOnlyFavoritesChange: (v: boolean) => void;
+  trains: Train[];
+  onUnfavorite: (row: SavedTrain) => void;
+}) {
   const trainById = new Map<string, Train>(trains.map((t) => [t.id, t]));
 
   return (
-    <aside className="pointer-events-auto w-80 rounded-xl border border-[#1c2a3e] bg-[#0d1520]/95 p-4 shadow-xl backdrop-blur">
+    <div className="p-4">
       <div className="flex items-center justify-between">
         <div className="font-display text-[11px] font-bold uppercase tracking-[0.18em] text-[#10e070]">
           Favorites
         </div>
-        <span className="text-[11px] text-[#5a6d82]">
-          {savedRows.length}
-        </span>
+        <span className="text-[11px] text-[#5a6d82]">{savedRows.length}</span>
       </div>
 
-      {/* Only-favorites toggle */}
       <label
         className={`mt-3 flex cursor-pointer items-center justify-between gap-2 rounded-md border px-3 py-2 text-[11px] uppercase tracking-[0.12em] transition-colors ${
           onlyFavorites
@@ -151,7 +236,7 @@ export function SavedTrainsPanel({
           <span className="text-[#10e070]">☆ Favorite this train</span>.
         </p>
       ) : (
-        <ul className="mt-3 space-y-2">
+        <ul className="mt-3 max-h-[50vh] space-y-2 overflow-y-auto pr-1">
           {savedRows.map((row) => {
             const t = trainById.get(row.train_id);
             return (
@@ -188,7 +273,7 @@ export function SavedTrainsPanel({
                 </div>
                 <button
                   type="button"
-                  onClick={() => unfavorite(row)}
+                  onClick={() => onUnfavorite(row)}
                   aria-label="Remove favorite"
                   title="Remove favorite"
                   className="rounded p-1 text-[#5a6d82] opacity-0 transition-opacity hover:bg-[#1c2a3e] hover:text-[#10e070] group-hover:opacity-100"
@@ -212,6 +297,6 @@ export function SavedTrainsPanel({
           })}
         </ul>
       )}
-    </aside>
+    </div>
   );
 }
