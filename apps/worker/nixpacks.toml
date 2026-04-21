@@ -1,0 +1,16 @@
+# Explicit build plan so Railway's Railpack / Nixpacks doesn't have to
+# guess. Worker is pure Node — no build step, just install deps and run.
+
+providers = ["node"]
+
+[phases.setup]
+nixPkgs = ["nodejs_20"]
+
+[phases.install]
+cmds = ["npm ci --omit=dev"]
+
+[phases.build]
+cmds = []
+
+[start]
+cmd = "node index.js"
