@@ -596,123 +596,124 @@ function ReplayAllLayer() {
       const trails = new Map<string, L.Polyline>();
       const trailCoords = new Map<string, [number, number][]>();
 
-      // Replay-All uses the normal locomotive look (silver at rest, ember
-      // when the train is actually moving this frame) — seeing every train
-      // as a cyan phantom blur was too chaotic. Ghost style is reserved for
-      // the single-train replay where the phantom metaphor works.
-      const buildIcon = (headingDeg: number, moving: boolean) =>
+      // Replay-All uses the plain silver locomotive — no ember, no steam,
+      // no ghost glow. The animation itself is the story; extra styling
+      // just makes 190 trains moving at once look like visual noise.
+      const buildIcon = (headingDeg: number) =>
         L.divIcon({
           className: "",
-          html: buildTrainFigureHTML(headingDeg, false, moving, false),
+          html: buildTrainFigureHTML(headingDeg, false, false, false),
           iconSize: [28, 18],
           iconAnchor: [14, 9],
         });
 
-      // Seed at frame 0 — trains that have a position at frame 0 only.
+      // Seed at the first known position per train. No trails — just the
+      // locomotives. (trails/trailCoords are still declared above but
+      // intentionally unused in this no-effects pass.)
       perTrain.forEach((arr, id) => {
         const first = arr.find((p) => p !== null) ?? null;
         if (!first) return;
         const seedHeadingStr = headingById.get(id);
         const seedHeading = seedHeadingStr ? headingToDegrees(seedHeadingStr) : 0;
         const g = L.marker(first, {
-          icon: buildIcon(seedHeading, false),
+          icon: buildIcon(seedHeading),
           interactive: false,
           zIndexOffset: 1500,
         }).addTo(lg);
-        // Subtle short trail — just enough to suggest motion without
-        // covering the map in a spiderweb of cyan lines.
-        const tr = L.polyline([first], {
-          color: "#5a6d82",
-          opacity: 0.35,
-          weight: 1,
-          lineCap: "round",
-          className: "amtrak-replayall-trail",
-          interactive: false,
-          smoothFactor: 1,
-        }).addTo(lg);
         ghosts.set(id, g);
-        trails.set(id, tr);
-        trailCoords.set(id, [first]);
         isSavedById.set(id, false);
       });
+      // Silence unused warnings for trails — we don't render them in this mode.
+      void trails;
+      void trailCoords;
 
       // ---- Hide live markers while the replay owns the stage.
       setReplayAllActive(true);
 
+      // ---- Smooth RAF animation over 10 s.
+      // At wall-clock time t in [0, TOTAL_MS], map to a virtual bucket
+      // position v in [0, FRAMES-1]. We interpolate linearly between
+      // bucket floor(v) and bucket ceil(v). Heading per train is
+      // recomputed only when the pair of buckets we're blending changes,
+      // so we're not rebuilding icons every RAF tick.
       const TOTAL_MS = 10_000;
-      const FRAME_MS = TOTAL_MS / FRAMES;
-      let currentFrame = 0;
       let cancelled = false;
+      const lastBucketPairById = new Map<string, number>();
       const lastHeadingById = new Map<string, number>();
+      let lastStatusReport = -1;
 
-      reportStatus("playing", `Replaying 1h · 1/${FRAMES}`, 0);
+      reportStatus("playing", "Replaying 1h · 0%", 0);
 
-      const interval = setInterval(() => {
-        currentFrame++;
+      let rafId = 0;
+      const animStart = performance.now();
+      const tick = (nowTs: number) => {
         if (cancelled) return;
-        if (currentFrame >= FRAMES) {
-          clearInterval(interval);
+        const elapsed = nowTs - animStart;
+        const progress = Math.min(1, elapsed / TOTAL_MS);
+        const v = progress * (FRAMES - 1);
+        const iA = Math.min(FRAMES - 2, Math.floor(v));
+        const iB = iA + 1;
+        const frac = v - iA;
+
+        perTrain.forEach((arr, id) => {
+          const a = arr[iA];
+          const b = arr[iB];
+          if (!a || !b) return;
+          const g = ghosts.get(id);
+          if (!g) return;
+          const lat = a[0] + (b[0] - a[0]) * frac;
+          const lon = a[1] + (b[1] - a[1]) * frac;
+          g.setLatLng([lat, lon]);
+
+          // Only rebuild icon when the bucket pair changed AND the two
+          // points differ meaningfully (so we get a real heading).
+          const pairKey = iA;
+          if (lastBucketPairById.get(id) !== pairKey) {
+            lastBucketPairById.set(id, pairKey);
+            if (approxMeters(a[0], a[1], b[0], b[1]) > 40) {
+              const heading = bearingDeg(a[0], a[1], b[0], b[1]);
+              const lastH = lastHeadingById.get(id) ?? -999;
+              if (Math.abs(heading - lastH) > 10) {
+                g.setIcon(buildIcon(heading));
+                lastHeadingById.set(id, heading);
+              }
+            }
+          }
+        });
+
+        // Throttle status updates to ~3/s so we don't thrash React.
+        if (elapsed - lastStatusReport > 300) {
+          reportStatus(
+            "playing",
+            `Replaying 1h · ${Math.round(progress * 100)}%`,
+            progress,
+          );
+          lastStatusReport = elapsed;
+        }
+
+        if (progress >= 1) {
           reportStatus("done", "Replay complete", 1);
           setTimeout(() => {
             if (cancelled) return;
             cleanup();
             reportStatus("idle", "");
-          }, 1500);
+          }, 1200);
           return;
         }
 
-        reportStatus(
-          "playing",
-          `Replaying 1h · ${currentFrame + 1}/${FRAMES}`,
-          currentFrame / (FRAMES - 1),
-        );
-
-        const TRAIL_LEN = 4; // how many recent positions to keep as a wake
-        perTrain.forEach((arr, id) => {
-          const pos = arr[currentFrame];
-          if (!pos) return;
-          const g = ghosts.get(id);
-          const tr = trails.get(id);
-          if (!g || !tr) return;
-
-          const coords = trailCoords.get(id)!;
-          const prev = coords[coords.length - 1];
-          const movedMeters = approxMeters(prev[0], prev[1], pos[0], pos[1]);
-          const moved = movedMeters > 60; // same threshold as live angry
-
-          // Rebuild icon when either heading or moving state changes.
-          const heading = moved
-            ? bearingDeg(prev[0], prev[1], pos[0], pos[1])
-            : (lastHeadingById.get(id) ?? 0);
-          const lastH = lastHeadingById.get(id) ?? -999;
-          const headingChanged = Math.abs(heading - lastH) > 8;
-          const wasMoving = (g as unknown as { _amtrakMoving?: boolean })
-            ._amtrakMoving;
-          if (headingChanged || wasMoving !== moved) {
-            g.setIcon(buildIcon(heading, moved));
-            lastHeadingById.set(id, heading);
-            (g as unknown as { _amtrakMoving?: boolean })._amtrakMoving =
-              moved;
-          }
-
-          g.setLatLng(pos);
-
-          // Keep only the last few points for a readable wake.
-          coords.push(pos);
-          if (coords.length > TRAIL_LEN) coords.shift();
-          tr.setLatLngs(coords);
-        });
-      }, FRAME_MS);
+        rafId = requestAnimationFrame(tick);
+      };
 
       const cleanup = () => {
         cancelled = true;
-        clearInterval(interval);
+        cancelAnimationFrame(rafId);
         lg.remove();
         setReplayAllActive(false);
         cancelCurrent = null;
       };
 
       cancelCurrent = cleanup;
+      rafId = requestAnimationFrame(tick);
     };
 
     window.addEventListener("amtrak:replay-all", handler);
