@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import L from "leaflet";
 import { MapContainer, TileLayer, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
-import type { Train, SavedPair } from "@/lib/types";
+import type { AmtrakerStation, Train, SavedPair } from "@/lib/types";
 import { headingToDegrees } from "@/lib/heading";
 import { trainMatchesAnyPair } from "@/lib/pair";
+import { getStationMap, loadStations } from "@/lib/stations";
 import { useTrains } from "./trains-context";
 import { buildPopupHTML, buildTrainFigureHTML } from "./train-figure";
 
@@ -38,16 +39,16 @@ export default function TrainMap({ savedPairs = [] }: TrainMapProps) {
         center={INITIAL_CENTER}
         zoom={INITIAL_ZOOM}
         scrollWheelZoom
-        className="h-full w-full bg-[#0b1220]"
+        className="h-full w-full bg-[#1a140d]"
         zoomControl={false}
       >
         <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
-          url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-          subdomains={["a", "b", "c", "d"]}
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+          url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
           maxZoom={19}
         />
         <ZoomControlBottomRight />
+        <TrackLayer trains={trains} />
         <AnimatedTrainsLayer trains={trains} savedPairs={savedPairs} />
       </MapContainer>
 
@@ -60,6 +61,101 @@ export default function TrainMap({ savedPairs = [] }: TrainMapProps) {
       ) : null}
     </div>
   );
+}
+
+// -------------------------------------------------------------------
+// TrackLayer — renders one polyline per unique route (dedup by route_name)
+// so we don't stack 30 identical lines along the Northeast Corridor.
+// -------------------------------------------------------------------
+
+function TrackLayer({ trains }: { trains: Train[] }) {
+  const map = useMap();
+  const [stations, setStations] = useState<AmtrakerStation[] | null>(null);
+  const layerRef = useRef<L.LayerGroup | null>(null);
+  const drawnRef = useRef<Set<string>>(new Set());
+
+  // Load station lat/lon lookup once
+  useEffect(() => {
+    let cancelled = false;
+    loadStations()
+      .then((list) => {
+        if (!cancelled) setStations(list);
+      })
+      .catch(() => {
+        // silent — map is fine without tracks
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Layer group for tracks (below markers)
+  useEffect(() => {
+    const lg = L.layerGroup().addTo(map);
+    layerRef.current = lg;
+    return () => {
+      lg.remove();
+      layerRef.current = null;
+      drawnRef.current.clear();
+    };
+  }, [map]);
+
+  // Add new route polylines when trains or stations change
+  useEffect(() => {
+    const lg = layerRef.current;
+    if (!lg || !stations) return;
+
+    const stationMap = getStationMap(stations);
+
+    // For each route_name, pick the train with the longest stations array.
+    const bestPerRoute = new Map<string, Train>();
+    for (const t of trains) {
+      if (!t.stations || t.stations.length < 2) continue;
+      const existing = bestPerRoute.get(t.route_name);
+      if (!existing || (t.stations.length > (existing.stations?.length ?? 0))) {
+        bestPerRoute.set(t.route_name, t);
+      }
+    }
+
+    for (const [routeName, train] of bestPerRoute) {
+      // Idempotent — don't redraw if we already have this route laid down.
+      if (drawnRef.current.has(routeName)) continue;
+
+      const coords: [number, number][] = [];
+      for (const s of train.stations ?? []) {
+        const sm = stationMap.get(s.code);
+        if (sm && typeof sm.lat === "number" && typeof sm.lon === "number") {
+          coords.push([sm.lat, sm.lon]);
+        }
+      }
+      if (coords.length < 2) continue;
+
+      // Two-layer rail: dark base + brass top so it reads on both light
+      // parchment tiles and darker terrain.
+      const base = L.polyline(coords, {
+        color: "#2b1f15",
+        opacity: 0.6,
+        weight: 3.2,
+        lineCap: "round",
+        interactive: false,
+        smoothFactor: 1.5,
+      });
+      const top = L.polyline(coords, {
+        color: "#c5a572",
+        opacity: 0.85,
+        weight: 1.4,
+        dashArray: "4 6",
+        lineCap: "round",
+        interactive: false,
+        smoothFactor: 1.5,
+      });
+      base.addTo(lg);
+      top.addTo(lg);
+      drawnRef.current.add(routeName);
+    }
+  }, [trains, stations]);
+
+  return null;
 }
 
 function ZoomControlBottomRight() {
@@ -83,10 +179,10 @@ function StatusPill({
 }) {
   const toneClasses =
     tone === "error"
-      ? "border-[#3a2a2a] bg-[#1a1212] text-[#f87171]"
+      ? "border-[#6b3a2e] bg-[#2d1812] text-[#d9593a]"
       : tone === "warn"
-        ? "border-[#3a3322] bg-[#1c1810] text-[#f5a524]"
-        : "border-[#1f2b45] bg-[#131d31] text-[#e5edf7]";
+        ? "border-[#6b5224] bg-[#2d2312] text-[#f0c565]"
+        : "border-[#4a3520] bg-[#2b1f15] text-[#f0e4cb]";
   return (
     <div
       className={`pointer-events-none absolute left-1/2 top-4 z-[1000] -translate-x-1/2 rounded-full border px-3 py-1.5 text-xs backdrop-blur ${toneClasses}`}

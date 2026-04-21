@@ -58,24 +58,24 @@ export function SavedPairsPanel({ onPairsChange }: SavedPairsPanelProps) {
 
   if (!user) {
     return (
-      <aside className="pointer-events-auto w-72 rounded-xl border border-[#1f2b45] bg-[#131d31]/95 p-4 shadow-xl backdrop-blur">
-        <div className="text-xs font-medium uppercase tracking-wider text-[#7b89a1]">
-          Saved pairs
+      <aside className="pointer-events-auto w-72 rounded-xl border border-[#4a3520] bg-[#2b1f15]/95 p-4 shadow-xl backdrop-blur">
+        <div className="font-display text-[11px] font-bold uppercase tracking-[0.18em] text-[#c5a572]">
+          Saved Routes
         </div>
-        <p className="mt-2 text-sm text-[#e5edf7]">
+        <p className="mt-2 text-sm text-[#f0e4cb]">
           Log in to save station pairs and see your trips highlighted on the
           map.
         </p>
         <div className="mt-3 flex gap-2">
           <Link
             href="/login"
-            className="flex-1 rounded-md border border-[#1f2b45] px-3 py-1.5 text-center text-xs text-[#e5edf7] hover:border-[#3a7afe] hover:text-[#3a7afe]"
+            className="flex-1 rounded-md border border-[#4a3520] px-3 py-1.5 text-center text-xs text-[#f0e4cb] hover:border-[#c5a572] hover:text-[#c5a572]"
           >
             Log in
           </Link>
           <Link
             href="/signup"
-            className="flex-1 rounded-md bg-[#3a7afe] px-3 py-1.5 text-center text-xs font-medium text-[#0b1220] hover:bg-[#5c92ff]"
+            className="flex-1 rounded-md bg-[#c5a572] px-3 py-1.5 text-center text-xs font-medium text-[#1a140d] hover:bg-[#dcb98a]"
           >
             Sign up
           </Link>
@@ -85,25 +85,25 @@ export function SavedPairsPanel({ onPairsChange }: SavedPairsPanelProps) {
   }
 
   return (
-    <aside className="pointer-events-auto w-80 rounded-xl border border-[#1f2b45] bg-[#131d31]/95 p-4 shadow-xl backdrop-blur">
+    <aside className="pointer-events-auto w-80 rounded-xl border border-[#4a3520] bg-[#2b1f15]/95 p-4 shadow-xl backdrop-blur">
       <div className="flex items-center justify-between">
-        <div className="text-xs font-medium uppercase tracking-wider text-[#7b89a1]">
-          Saved pairs
+        <div className="font-display text-[11px] font-bold uppercase tracking-[0.18em] text-[#c5a572]">
+          Saved Routes
         </div>
         <Link
           href="/search"
-          className="text-xs text-[#3a7afe] hover:underline"
+          className="text-xs text-[#c5a572] hover:underline"
         >
           + Add
         </Link>
       </div>
 
       {pairsLoading ? (
-        <p className="mt-2 text-sm text-[#7b89a1]">Loading…</p>
+        <p className="mt-2 text-sm text-[#a08866]">Loading…</p>
       ) : pairs.length === 0 ? (
-        <p className="mt-2 text-sm text-[#7b89a1]">
+        <p className="mt-2 text-sm text-[#a08866]">
           No saved pairs yet. Head to{" "}
-          <Link href="/search" className="text-[#3a7afe] hover:underline">
+          <Link href="/search" className="text-[#c5a572] hover:underline">
             Search
           </Link>{" "}
           to find a direct route and save it.
@@ -113,15 +113,15 @@ export function SavedPairsPanel({ onPairsChange }: SavedPairsPanelProps) {
           {pairs.map((p) => (
             <li
               key={p.id}
-              className="group flex items-center justify-between gap-2 rounded-md border border-[#1f2b45] bg-[#0b1220] px-3 py-2"
+              className="group flex items-center justify-between gap-2 rounded-md border border-[#4a3520] bg-[#1a140d] px-3 py-2"
             >
               <div className="min-w-0 flex-1">
-                <div className="truncate text-sm text-[#e5edf7]">
+                <div className="truncate text-sm text-[#f0e4cb]">
                   <span className="font-medium">{p.from_code}</span>
-                  <span className="mx-1.5 text-[#7b89a1]">→</span>
+                  <span className="mx-1.5 text-[#a08866]">→</span>
                   <span className="font-medium">{p.to_code}</span>
                 </div>
-                <div className="truncate text-[11px] text-[#7b89a1]">
+                <div className="truncate text-[11px] text-[#a08866]">
                   {p.from_name} → {p.to_name}
                 </div>
               </div>
@@ -130,7 +130,7 @@ export function SavedPairsPanel({ onPairsChange }: SavedPairsPanelProps) {
                 onClick={() => deletePair(p.id)}
                 aria-label={`Delete ${p.from_code} → ${p.to_code}`}
                 title="Delete"
-                className="rounded p-1 text-[#7b89a1] opacity-0 transition-opacity hover:bg-[#1f2b45] hover:text-[#f87171] group-hover:opacity-100"
+                className="rounded p-1 text-[#a08866] opacity-0 transition-opacity hover:bg-[#4a3520] hover:text-[#d9593a] group-hover:opacity-100"
               >
                 <svg
                   viewBox="0 0 24 24"

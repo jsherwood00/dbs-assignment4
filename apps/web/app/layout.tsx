@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Cinzel } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/components/auth-context";
 import { TrainsProvider } from "@/components/trains-context";
@@ -13,6 +13,12 @@ const geistSans = Geist({
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+});
+
+const cinzel = Cinzel({
+  variable: "--font-cinzel",
+  subsets: ["latin"],
+  weight: ["500", "700"],
 });
 
 export const metadata: Metadata = {
@@ -29,9 +35,9 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${cinzel.variable} h-full antialiased`}
     >
-      <body className="flex h-full min-h-full flex-col bg-[#0b1220] text-[#e5edf7]">
+      <body className="flex h-full min-h-full flex-col bg-[#1a140d] text-[#f0e4cb]">
         <AuthProvider>
           <TrainsProvider>
             <NavBar />

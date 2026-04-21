@@ -15,19 +15,21 @@ export function NavBar() {
   const pathname = usePathname();
 
   return (
-    <header className="sticky top-0 z-[1000] border-b border-[#1f2b45] bg-[#0b1220]/95 backdrop-blur supports-[backdrop-filter]:bg-[#0b1220]/80">
+    <header className="sticky top-0 z-[1000] border-b border-[#4a3520] bg-[#1a140d]/95 backdrop-blur supports-[backdrop-filter]:bg-[#1a140d]/80">
       <div className="mx-auto flex h-14 max-w-7xl items-center gap-6 px-4">
         <Link
           href="/"
-          className="flex items-center gap-2 font-semibold tracking-tight text-[#e5edf7]"
+          className="flex items-center gap-2 text-[#f0e4cb]"
         >
           <span
             aria-hidden
-            className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-[#3a7afe] text-xs font-bold text-[#0b1220]"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-[#6b5224] bg-[#c5a572] font-display text-sm font-bold text-[#1a140d] shadow-[inset_0_1px_0_rgba(255,255,255,0.4),0_2px_0_rgba(0,0,0,0.4)]"
           >
             A
           </span>
-          Amtrak Live
+          <span className="font-display text-sm font-bold uppercase tracking-[0.18em] text-[#f0e4cb]">
+            Amtrak Live
+          </span>
         </Link>
 
         <nav className="flex items-center gap-1">
@@ -40,8 +42,8 @@ export function NavBar() {
                 href={t.href}
                 className={`rounded-md px-3 py-1.5 text-sm transition-colors ${
                   active
-                    ? "bg-[#1f2b45] text-[#e5edf7]"
-                    : "text-[#7b89a1] hover:bg-[#131d31] hover:text-[#e5edf7]"
+                    ? "bg-[#4a3520] text-[#f0e4cb]"
+                    : "text-[#a08866] hover:bg-[#2b1f15] hover:text-[#f0e4cb]"
                 }`}
               >
                 {t.label}
@@ -57,13 +59,13 @@ export function NavBar() {
         <div className="flex items-center gap-2">
           {loading ? null : user ? (
             <>
-              <span className="hidden text-xs text-[#7b89a1] sm:inline">
+              <span className="hidden text-xs text-[#a08866] sm:inline">
                 {user.email}
               </span>
               <button
                 type="button"
                 onClick={() => signOut()}
-                className="rounded-md border border-[#1f2b45] px-3 py-1.5 text-sm text-[#e5edf7] hover:border-[#3a7afe] hover:text-[#3a7afe]"
+                className="rounded-md border border-[#4a3520] px-3 py-1.5 text-sm text-[#f0e4cb] hover:border-[#c5a572] hover:text-[#c5a572]"
               >
                 Sign out
               </button>
@@ -72,13 +74,13 @@ export function NavBar() {
             <>
               <Link
                 href="/login"
-                className="rounded-md px-3 py-1.5 text-sm text-[#e5edf7] hover:text-[#3a7afe]"
+                className="rounded-md px-3 py-1.5 text-sm text-[#f0e4cb] hover:text-[#c5a572]"
               >
                 Log in
               </Link>
               <Link
                 href="/signup"
-                className="rounded-md bg-[#3a7afe] px-3 py-1.5 text-sm font-medium text-[#0b1220] hover:bg-[#5c92ff]"
+                className="rounded-md bg-[#c5a572] px-3 py-1.5 text-sm font-medium text-[#1a140d] hover:bg-[#dcb98a]"
               >
                 Sign up
               </Link>

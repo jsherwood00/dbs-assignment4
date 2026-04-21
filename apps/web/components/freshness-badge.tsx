@@ -14,8 +14,8 @@ export function FreshnessBadge() {
 
   if (loading) {
     return (
-      <span className="hidden items-center gap-1.5 rounded-full border border-[#1f2b45] px-2.5 py-1 text-[11px] uppercase tracking-wider text-[#7b89a1] md:inline-flex">
-        <Dot className="bg-[#7b89a1] animate-pulse" />
+      <span className="hidden items-center gap-1.5 rounded-full border border-[#4a3520] px-2.5 py-1 text-[11px] uppercase tracking-wider text-[#a08866] md:inline-flex">
+        <Dot className="bg-[#a08866] animate-pulse" />
         loading
       </span>
     );
@@ -23,8 +23,8 @@ export function FreshnessBadge() {
 
   if (!lastUpdatedAt) {
     return (
-      <span className="hidden items-center gap-1.5 rounded-full border border-[#3a2a2a] bg-[#1a1212] px-2.5 py-1 text-[11px] uppercase tracking-wider text-[#f87171] md:inline-flex">
-        <Dot className="bg-[#f87171]" />
+      <span className="hidden items-center gap-1.5 rounded-full border border-[#6b3a2e] bg-[#2d1812] px-2.5 py-1 text-[11px] uppercase tracking-wider text-[#d9593a] md:inline-flex">
+        <Dot className="bg-[#d9593a]" />
         no data
       </span>
     );
@@ -53,21 +53,21 @@ function Dot({ className }: { className?: string }) {
 function classify(ageMs: number) {
   if (ageMs < 90_000) {
     return {
-      classes: "border-[#1f3a2d] bg-[#0f1b16] text-[#34d399]",
-      dot: "bg-[#34d399]",
+      classes: "border-[#3e5028] bg-[#1b2614] text-[#8ab06e]",
+      dot: "bg-[#8ab06e]",
       pulse: true,
     };
   }
   if (ageMs < 5 * 60_000) {
     return {
-      classes: "border-[#3a3322] bg-[#1c1810] text-[#f5a524]",
-      dot: "bg-[#f5a524]",
+      classes: "border-[#6b5224] bg-[#2d2312] text-[#f0c565]",
+      dot: "bg-[#f0c565]",
       pulse: false,
     };
   }
   return {
-    classes: "border-[#3a2a2a] bg-[#1a1212] text-[#f87171]",
-    dot: "bg-[#f87171]",
+    classes: "border-[#6b3a2e] bg-[#2d1812] text-[#d9593a]",
+    dot: "bg-[#d9593a]",
     pulse: false,
   };
 }

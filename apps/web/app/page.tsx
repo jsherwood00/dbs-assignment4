@@ -8,7 +8,7 @@ import type { SavedPair } from "@/lib/types";
 const TrainMap = dynamic(() => import("@/components/train-map"), {
   ssr: false,
   loading: () => (
-    <div className="flex h-full w-full items-center justify-center bg-[#0b1220] text-sm text-[#7b89a1]">
+    <div className="flex h-full w-full items-center justify-center bg-[#1a140d] text-sm text-[#a08866]">
       Loading map…
     </div>
   ),

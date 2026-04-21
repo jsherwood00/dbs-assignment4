@@ -3,7 +3,16 @@ import type { AmtrakerStation } from "./types";
 const AMTRAKER_STATIONS_URL = "https://api.amtraker.com/v3/stations";
 
 let cache: AmtrakerStation[] | null = null;
+let cacheMap: Map<string, AmtrakerStation> | null = null;
 let inflight: Promise<AmtrakerStation[]> | null = null;
+
+export function getStationMap(
+  list: AmtrakerStation[],
+): Map<string, AmtrakerStation> {
+  if (cacheMap && cache === list) return cacheMap;
+  cacheMap = new Map(list.map((s) => [s.code, s]));
+  return cacheMap;
+}
 
 export async function loadStations(): Promise<AmtrakerStation[]> {
   if (cache) return cache;

@@ -39,7 +39,7 @@ export function buildTrainFigureHTML(
         <!-- smokestack cap -->
         <rect x="27" y="4" width="9" height="2" rx="1" fill="currentColor"/>
         <!-- cab window -->
-        <rect x="6" y="13" width="7" height="6" rx="0.5" fill="#0b1220" opacity="0.85"/>
+        <rect x="6" y="13" width="7" height="6" rx="0.5" fill="#1a140d" opacity="0.85"/>
         <!-- headlight dot -->
         <circle cx="41" cy="20" r="1" fill="#fde68a"/>
         <!-- steam (only visible when .train-figure--moving) -->
