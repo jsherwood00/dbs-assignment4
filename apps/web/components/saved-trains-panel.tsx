@@ -87,7 +87,7 @@ export function SavedTrainsPanel({
         </div>
         <p className="mt-2 text-sm text-[#d8e4f0]">
           Sign up to favorite specific Amtrak trains. Your favorites turn
-          <span className="text-[#ef4c4c] font-semibold"> red on the map</span>,
+          <span className="text-[#10e070] font-semibold"> green on the map</span>,
           so you can spot them at a glance and filter out the rest.
         </p>
         <Link
@@ -106,7 +106,7 @@ export function SavedTrainsPanel({
   return (
     <aside className="pointer-events-auto w-80 rounded-xl border border-[#1c2a3e] bg-[#0d1520]/95 p-4 shadow-xl backdrop-blur">
       <div className="flex items-center justify-between">
-        <div className="font-display text-[11px] font-bold uppercase tracking-[0.18em] text-[#ef4c4c]">
+        <div className="font-display text-[11px] font-bold uppercase tracking-[0.18em] text-[#10e070]">
           Favorites
         </div>
         <span className="text-[11px] text-[#5a6d82]">
@@ -118,7 +118,7 @@ export function SavedTrainsPanel({
       <label
         className={`mt-3 flex cursor-pointer items-center justify-between gap-2 rounded-md border px-3 py-2 text-[11px] uppercase tracking-[0.12em] transition-colors ${
           onlyFavorites
-            ? "border-[#ef4c4c] bg-[rgba(239,76,76,0.1)] text-[#ffb3b3]"
+            ? "border-[#10e070] bg-[rgba(16,224,112,0.1)] text-[#b3ffc4]"
             : "border-[#1c2a3e] bg-[#05080e] text-[#5a6d82] hover:text-[#d8e4f0]"
         }`}
       >
@@ -132,7 +132,7 @@ export function SavedTrainsPanel({
         <span
           aria-hidden
           className={`relative inline-block h-4 w-7 rounded-full transition-colors ${
-            onlyFavorites ? "bg-[#ef4c4c]" : "bg-[#1c2a3e]"
+            onlyFavorites ? "bg-[#10e070]" : "bg-[#1c2a3e]"
           }`}
         >
           <span
@@ -148,7 +148,7 @@ export function SavedTrainsPanel({
       ) : savedRows.length === 0 ? (
         <p className="mt-3 text-sm text-[#5a6d82]">
           No favorites yet. Click a train on the map and hit{" "}
-          <span className="text-[#ef4c4c]">☆ Favorite this train</span>.
+          <span className="text-[#10e070]">☆ Favorite this train</span>.
         </p>
       ) : (
         <ul className="mt-3 space-y-2">
@@ -161,7 +161,7 @@ export function SavedTrainsPanel({
               >
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm text-[#d8e4f0]">
-                    <span className="text-[#ef4c4c]">★</span>{" "}
+                    <span className="text-[#10e070]">★</span>{" "}
                     {t ? (
                       <>
                         <span className="font-medium">{t.route_name}</span>
@@ -191,7 +191,7 @@ export function SavedTrainsPanel({
                   onClick={() => unfavorite(row)}
                   aria-label="Remove favorite"
                   title="Remove favorite"
-                  className="rounded p-1 text-[#5a6d82] opacity-0 transition-opacity hover:bg-[#1c2a3e] hover:text-[#ef4c4c] group-hover:opacity-100"
+                  className="rounded p-1 text-[#5a6d82] opacity-0 transition-opacity hover:bg-[#1c2a3e] hover:text-[#10e070] group-hover:opacity-100"
                 >
                   <svg
                     viewBox="0 0 24 24"

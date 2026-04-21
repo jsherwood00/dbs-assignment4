@@ -224,20 +224,20 @@ body {
 }
 
 .amtrak-favorite-btn {
-  color: #ef4c4c;
-  border-color: #4a1e1e;
+  color: #10e070;
+  border-color: #1e4a28;
 }
 
 .amtrak-favorite-btn:hover {
-  border-color: #ef4c4c;
-  background: rgba(239, 76, 76, 0.08);
-  box-shadow: 0 0 12px rgba(239, 76, 76, 0.4);
+  border-color: #10e070;
+  background: rgba(16, 224, 112, 0.08);
+  box-shadow: 0 0 12px rgba(16, 224, 112, 0.4);
 }
 
 .amtrak-favorite-btn.is-favorited {
-  background: rgba(239, 76, 76, 0.15);
-  border-color: #ef4c4c;
-  color: #ffb3b3;
+  background: rgba(16, 224, 112, 0.15);
+  border-color: #10e070;
+  color: #b3ffc4;
 }
 
 .amtrak-favorite-btn:disabled {
@@ -303,11 +303,12 @@ body {
   overflow: visible;
 }
 
-/* Favorited train: unmistakable crimson red + pulse halo. The hue is
-   intentionally pushed toward magenta-red so it never gets confused with
-   the warm orange "angry/moving" effect on regular trains. */
+/* Favorited train: unmistakable emerald green + pulse halo. The hue is
+   intentionally vibrant — well away from the warm orange "angry/moving"
+   effect on regular trains and clearly distinct from the cool cyan
+   station dots. */
 .train-figure--saved {
-  color: #e01030;
+  color: #10e070;
   animation: amtrak-pulse 1.8s ease-in-out infinite;
 }
 
@@ -315,13 +316,13 @@ body {
   0%,
   100% {
     filter:
-      drop-shadow(0 0 8px rgba(224, 16, 48, 1))
+      drop-shadow(0 0 8px rgba(16, 224, 112, 1))
       drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));
   }
   50% {
     filter:
-      drop-shadow(0 0 24px rgba(255, 0, 60, 1))
-      drop-shadow(0 0 8px rgba(255, 80, 120, 0.9))
+      drop-shadow(0 0 24px rgba(0, 255, 136, 1))
+      drop-shadow(0 0 8px rgba(80, 255, 160, 0.9))
       drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));
   }
 }
@@ -366,24 +367,24 @@ body {
   }
 }
 
-/* Favorited AND moving: crimson + faster rumble + super-hot halo
-   composes with the red pulse. Colors are pushed brighter for energy. */
+/* Favorited AND moving: neon green + faster rumble + super-hot halo
+   composes with the pulse. Colors are pushed brighter for energy. */
 .train-figure--saved.train-figure--moving {
-  color: #ff0044;
+  color: #00ff88;
   animation:
     amtrak-pulse 0.9s ease-in-out infinite,
     angry-rumble 120ms linear infinite;
 }
 
-/* Crimson smoke when a favorited train is moving. */
+/* Electric-green smoke when a favorited train is moving. */
 .train-figure--saved.train-figure--moving .train-figure__puff {
-  fill: rgba(240, 30, 70, 0.95);
+  fill: rgba(20, 240, 120, 0.95);
 }
 .train-figure--saved.train-figure--moving .train-figure__puff--2 {
-  fill: rgba(200, 20, 50, 0.92);
+  fill: rgba(20, 200, 100, 0.92);
 }
 .train-figure--saved.train-figure--moving .train-figure__puff--3 {
-  fill: rgba(150, 14, 40, 0.88);
+  fill: rgba(14, 150, 70, 0.88);
 }
 
 /* ---------- Favorite-moving shockwave rings ---------- */
