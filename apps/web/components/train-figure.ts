@@ -50,6 +50,14 @@ export function buildTrainFigureHTML(
           <circle class="train-figure__puff train-figure__puff--2" cx="31" cy="4" r="3"/>
           <circle class="train-figure__puff train-figure__puff--3" cx="31" cy="4" r="2"/>
         </g>
+        <!-- Shockwave rings — only appear for favorited+moving trains.
+             Three concentric rings explode outward on a stagger for a
+             cinematic "something important is happening here" vibe. -->
+        <g class="train-figure__shockwaves">
+          <circle class="train-figure__ring train-figure__ring--1" cx="24" cy="16" r="16" fill="none" stroke="currentColor" stroke-width="1.5" pathLength="1"/>
+          <circle class="train-figure__ring train-figure__ring--2" cx="24" cy="16" r="16" fill="none" stroke="currentColor" stroke-width="1.5" pathLength="1"/>
+          <circle class="train-figure__ring train-figure__ring--3" cx="24" cy="16" r="16" fill="none" stroke="currentColor" stroke-width="1.5" pathLength="1"/>
+        </g>
       </svg>
     </div>
   `;
@@ -108,6 +116,12 @@ export function buildPopupHTML(
        </button>`
     : "";
 
+  // "Last update" age — computed at popup-build time. Since the popup
+  // is rebuilt every time the train row changes (which is every worker
+  // tick), the age is accurate at the moment you open it.
+  const updateAge = formatAge(Date.now() - new Date(train.last_updated).getTime());
+  const updatedLine = `<div class="amtrak-muted amtrak-updated">Updated ${escape(updateAge)}</div>`;
+
   return `
     <div class="amtrak-popup">
       <div class="amtrak-popup__header">
@@ -123,6 +137,7 @@ export function buildPopupHTML(
       ${velocity}
       ${next}
       ${delay}
+      ${updatedLine}
       <div class="amtrak-popup__actions">
         ${favoriteBtn}
         <button
@@ -135,6 +150,18 @@ export function buildPopupHTML(
       </div>
     </div>
   `;
+}
+
+function formatAge(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return "just now";
+  if (ms < 60_000) {
+    const s = Math.max(1, Math.round(ms / 1000));
+    return `${s}s ago`;
+  }
+  const m = Math.round(ms / 60_000);
+  if (m < 60) return `${m} min ago`;
+  const h = Math.round(m / 60);
+  return `${h}h ago`;
 }
 
 function findNextStation(train: Train) {
