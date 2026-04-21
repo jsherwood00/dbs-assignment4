@@ -74,8 +74,8 @@ export default function TrainMap({
           viewMode={viewMode}
         />
         <FavoriteLayer />
-        <ReplayLayer />
-        <ReplayAllLayer />
+        <ReplayLayer savedIds={savedIds} />
+        <ReplayAllLayer savedIds={savedIds} />
       </MapContainer>
 
       {loading ? (
@@ -310,16 +310,20 @@ function StationLayer({ trains }: { trains: Train[] }) {
 // trail behind it.
 // -------------------------------------------------------------------
 
-function ReplayLayer() {
+function ReplayLayer({ savedIds }: { savedIds: Set<string> }) {
   const map = useMap();
   const { trains, setReplayingTrainId } = useTrains();
   const trainsRef = useRef(trains);
+  const savedIdsRef = useRef(savedIds);
   const activeRef = useRef<(() => void) | null>(null);
 
-  // Keep a live ref so the click handler always sees the latest train list.
+  // Keep live refs so the click handler always sees the latest state.
   useEffect(() => {
     trainsRef.current = trains;
   }, [trains]);
+  useEffect(() => {
+    savedIdsRef.current = savedIds;
+  }, [savedIds]);
 
   useEffect(() => {
     const onClick = async (e: MouseEvent) => {
@@ -386,9 +390,9 @@ function ReplayLayer() {
         smoothFactor: 1.2,
       }).addTo(lg);
 
-      // Plain silver locomotive — same look as Replay-All. The cyan
-      // phantom / ghost styling gets too visually noisy in practice;
-      // regular train + popup-closes is clearer.
+      // Plain locomotive (no moving/angry effects) — but honor the user's
+      // favorite state so favorited trains render green during replay too.
+      const replaySaved = savedIdsRef.current.has(trainId);
       const seedHeading =
         rows.length > 1
           ? bearingDeg(rows[0].lat, rows[0].lon, rows[1].lat, rows[1].lon)
@@ -396,9 +400,9 @@ function ReplayLayer() {
       const ghost = L.marker([rows[0].lat, rows[0].lon], {
         icon: L.divIcon({
           className: "",
-          html: buildTrainFigureHTML(seedHeading, false, false, false),
-          iconSize: [36, 24],
-          iconAnchor: [18, 12],
+          html: buildTrainFigureHTML(seedHeading, replaySaved, false, false),
+          iconSize: replaySaved ? [52, 36] : [36, 24],
+          iconAnchor: replaySaved ? [26, 18] : [18, 12],
         }),
         interactive: false,
         zIndexOffset: 2000,
@@ -616,10 +620,14 @@ function FavoriteLayer() {
   return null;
 }
 
-function ReplayAllLayer() {
+function ReplayAllLayer({ savedIds }: { savedIds: Set<string> }) {
   const map = useMap();
   const { trains, setReplayAllActive } = useTrains();
   const trainsRef = useRef(trains);
+  const savedIdsRef = useRef(savedIds);
+  useEffect(() => {
+    savedIdsRef.current = savedIds;
+  }, [savedIds]);
 
   useEffect(() => {
     trainsRef.current = trains;
@@ -705,31 +713,33 @@ function ReplayAllLayer() {
       const trails = new Map<string, L.Polyline>();
       const trailCoords = new Map<string, [number, number][]>();
 
-      // Replay-All uses the plain silver locomotive — no ember, no steam,
-      // no ghost glow. The animation itself is the story; extra styling
-      // just makes 190 trains moving at once look like visual noise.
-      const buildIcon = (headingDeg: number) =>
+      // Replay-All uses the plain silver locomotive, except favorites
+      // render in green so you can spot them in the time-lapse. No ember
+      // / steam / shockwaves for anyone — the animation itself is the
+      // story and extra styling makes 190 trains moving at once look
+      // like visual noise.
+      const savedIdsNow = savedIdsRef.current;
+      const buildIcon = (headingDeg: number, saved: boolean) =>
         L.divIcon({
           className: "",
-          html: buildTrainFigureHTML(headingDeg, false, false, false),
-          iconSize: [28, 18],
-          iconAnchor: [14, 9],
+          html: buildTrainFigureHTML(headingDeg, saved, false, false),
+          iconSize: saved ? [40, 28] : [28, 18],
+          iconAnchor: saved ? [20, 14] : [14, 9],
         });
 
-      // Seed at the first known position per train. No trails — just the
-      // locomotives. (trails/trailCoords are still declared above but
-      // intentionally unused in this no-effects pass.)
+      // Seed at the first known position per train.
       perTrain.forEach((points, id) => {
         const first = points[0];
         const seedHeadingStr = headingById.get(id);
         const seedHeading = seedHeadingStr ? headingToDegrees(seedHeadingStr) : 0;
+        const isSaved = savedIdsNow.has(id);
         const g = L.marker([first.lat, first.lon], {
-          icon: buildIcon(seedHeading),
+          icon: buildIcon(seedHeading, isSaved),
           interactive: false,
-          zIndexOffset: 1500,
+          zIndexOffset: isSaved ? 1700 : 1500,
         }).addTo(lg);
         ghosts.set(id, g);
-        isSavedById.set(id, false);
+        isSavedById.set(id, isSaved);
       });
       // Silence unused warnings for trails — we don't render them in this mode.
       void trails;
@@ -837,7 +847,7 @@ function ReplayAllLayer() {
             );
             const lastH = lastHeadingById.get(id) ?? -999;
             if (Math.abs(heading - lastH) > 10) {
-              g.setIcon(buildIcon(heading));
+              g.setIcon(buildIcon(heading, isSavedById.get(id) === true));
               lastHeadingById.set(id, heading);
             }
           }

@@ -303,13 +303,12 @@ body {
   overflow: visible;
 }
 
-/* Favorited train: unmistakable emerald green + pulse halo. The hue is
-   intentionally vibrant — well away from the warm orange "angry/moving"
-   effect on regular trains and clearly distinct from the cool cyan
-   station dots. */
+/* Favorited-but-stationary: just green + bigger (iconSize handles size).
+   No pulse, no glow — keeps the map calm when a favorite is parked.
+   The full pulse + shockwave treatment only kicks in once it's moving
+   (see .train-figure--saved.train-figure--moving below). */
 .train-figure--saved {
   color: #10e070;
-  animation: amtrak-pulse 1.8s ease-in-out infinite;
 }
 
 @keyframes amtrak-pulse {
