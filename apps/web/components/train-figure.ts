@@ -116,11 +116,28 @@ export function buildPopupHTML(
        </button>`
     : "";
 
-  // "Last update" age — computed at popup-build time. Since the popup
-  // is rebuilt every time the train row changes (which is every worker
-  // tick), the age is accurate at the moment you open it.
-  const updateAge = formatAge(Date.now() - new Date(train.last_updated).getTime());
-  const updatedLine = `<div class="amtrak-muted amtrak-updated">Updated ${escape(updateAge)}</div>`;
+  // "GPS updated" age — we prefer amtraker's upstream `lastValTS` (the
+  // last time the train actually reported a valid position) over our
+  // row's last_updated (which is just "when the worker last wrote",
+  // basically always a few seconds old). Amtraker typically refreshes
+  // GPS every 2-5 minutes per train, so this is the number that
+  // actually tells you "how fresh is this position".
+  const freshnessTs =
+    train.raw?.lastValTS ??
+    train.raw?.updatedAt ??
+    train.last_updated;
+  const freshnessMs = freshnessTs
+    ? Date.now() - new Date(freshnessTs).getTime()
+    : NaN;
+  const absolute = freshnessTs
+    ? new Date(freshnessTs).toLocaleTimeString([], {
+        hour: "numeric",
+        minute: "2-digit",
+      })
+    : "";
+  const updatedLine = Number.isFinite(freshnessMs)
+    ? `<div class="amtrak-muted amtrak-updated">GPS updated ${escape(formatAge(freshnessMs))}${absolute ? ` · ${escape(absolute)}` : ""}</div>`
+    : "";
 
   return `
     <div class="amtrak-popup">

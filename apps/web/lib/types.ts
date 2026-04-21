@@ -23,7 +23,16 @@ export interface Train {
   origin_code: string | null;
   dest_code: string | null;
   stations: TrainStation[] | null;
+  /** When the worker last wrote this row. */
   last_updated: string;
+  /** Full amtraker payload. Includes `lastValTS` — the upstream GPS
+   *  timestamp, which is what we actually want when showing
+   *  "Updated X ago" to the user. */
+  raw?: {
+    lastValTS?: string;
+    updatedAt?: string;
+    [k: string]: unknown;
+  } | null;
 }
 
 export interface SavedPair {
