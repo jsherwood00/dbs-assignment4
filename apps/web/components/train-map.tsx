@@ -350,7 +350,11 @@ function ReplayLayer() {
       }
       rows.sort((a, b) => a.t - b.t);
 
-      btn.textContent = "▶ Replaying…";
+      // Close the popup now — its box was getting in the way of the
+      // phantom as it moved. The button's HTML reference goes stale on
+      // closePopup, but we don't need to touch it again (the whole popup
+      // will be rebuilt next time the marker is clicked).
+      map.closePopup();
       setReplayingTrainId(trainId);
 
       const lg = L.layerGroup().addTo(map);
@@ -366,11 +370,9 @@ function ReplayLayer() {
         smoothFactor: 1.2,
       }).addTo(lg);
 
-      // Ghost marker = the train SVG in ghost mode. We only build the icon
-      // ONCE. After that, heading changes are applied by updating a CSS
-      // variable on the existing element — rebuilding the divIcon every
-      // few degrees was destroying + re-creating the DOM, which was the
-      // source of the "looks like glitching" behavior.
+      // Plain silver locomotive — same look as Replay-All. The cyan
+      // phantom / ghost styling gets too visually noisy in practice;
+      // regular train + popup-closes is clearer.
       const seedHeading =
         rows.length > 1
           ? bearingDeg(rows[0].lat, rows[0].lon, rows[1].lat, rows[1].lon)
@@ -378,7 +380,7 @@ function ReplayLayer() {
       const ghost = L.marker([rows[0].lat, rows[0].lon], {
         icon: L.divIcon({
           className: "",
-          html: buildTrainFigureHTML(seedHeading, false, false, true),
+          html: buildTrainFigureHTML(seedHeading, false, false, false),
           iconSize: [36, 24],
           iconAnchor: [18, 12],
         }),
