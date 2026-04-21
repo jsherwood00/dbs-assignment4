@@ -617,7 +617,6 @@ function ReplayAllLayer() {
           icon: buildIcon(seedHeading),
           interactive: false,
           zIndexOffset: 1500,
-          opacity: 0.25, // start dimmed (before first sample); RAF will brighten
         }).addTo(lg);
         ghosts.set(id, g);
         isSavedById.set(id, false);
@@ -651,7 +650,6 @@ function ReplayAllLayer() {
       let cancelled = false;
       const cursorById = new Map<string, number>();
       const lastHeadingById = new Map<string, number>();
-      const lastVisibleById = new Map<string, boolean>();
       let lastStatusReport = -1;
 
       reportStatus("playing", "Replaying 1h · 0%", 0);
@@ -670,27 +668,23 @@ function ReplayAllLayer() {
           const first = points[0];
           const last = points[points.length - 1];
 
-          // Always render every train. Three cases:
-          //   1. virtualSec before first sample: clamp at first, opacity-dim
-          //      so it reads as "not yet started its run".
-          //   2. virtualSec after last sample: clamp at last, opacity-dim
-          //      ("already completed its run").
-          //   3. In range: cursor-advance and interpolate between the two
-          //      bracketing samples.
+          // Always render at full opacity. Three cases, all visually
+          // identical (silver locomotive at some position):
+          //   1. Before first sample: park at the first known position.
+          //   2. After last sample:  park at the last known position.
+          //   3. Inside the data window: cursor-advance and interpolate
+          //      between the two bracketing samples.
           let lat: number;
           let lon: number;
           let segmentA = first;
           let segmentB = first;
-          let dimmed = false;
 
           if (virtualSec <= first.t) {
             lat = first.lat;
             lon = first.lon;
-            dimmed = true;
           } else if (virtualSec >= last.t) {
             lat = last.lat;
             lon = last.lon;
-            dimmed = true;
           } else {
             // Advance cursor monotonically.
             let i = cursorById.get(id) ?? 0;
@@ -714,19 +708,16 @@ function ReplayAllLayer() {
 
           g.setLatLng([lat, lon]);
 
-          // Toggle dim only when the boolean flips.
-          const wasDim = lastVisibleById.get(id) === false;
-          if (wasDim !== dimmed) {
-            const el = g.getElement() as HTMLElement | null;
-            if (el) el.style.opacity = dimmed ? "0.25" : "1";
-            lastVisibleById.set(id, !dimmed);
-          }
-
-          // Heading update only when inside the data range and the
-          // segment has enough distance to establish a direction.
+          // Heading update — only when we have a real segment with
+          // enough distance to establish a direction.
           if (
-            !dimmed &&
-            approxMeters(segmentA.lat, segmentA.lon, segmentB.lat, segmentB.lon) > 40
+            segmentA !== segmentB &&
+            approxMeters(
+              segmentA.lat,
+              segmentA.lon,
+              segmentB.lat,
+              segmentB.lon,
+            ) > 40
           ) {
             const heading = bearingDeg(
               segmentA.lat,
