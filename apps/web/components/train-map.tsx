@@ -1,14 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
 import { MapContainer, TileLayer, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
-import type { AmtrakerStation, Train, SavedPair } from "@/lib/types";
+import type { AmtrakerStation, Train } from "@/lib/types";
 import { headingToDegrees } from "@/lib/heading";
-import { trainMatchesAnyPair } from "@/lib/pair";
 import { getStationMap, loadStations } from "@/lib/stations";
 import { getSupabase } from "@/lib/supabase";
+import { useAuth } from "./auth-context";
 import { useTrains, type ViewMode } from "./trains-context";
 import { buildPopupHTML, buildTrainFigureHTML } from "./train-figure";
 import { HistorySlider } from "./history-slider";
@@ -24,12 +24,25 @@ const ANIMATION_DURATION_MS = 2_000;
 const MIN_MOVE_METERS = 100;
 
 interface TrainMapProps {
-  savedPairs?: SavedPair[];
+  savedIds: Set<string>;
+  onlyFavorites: boolean;
 }
 
-export default function TrainMap({ savedPairs = [] }: TrainMapProps) {
+export default function TrainMap({
+  savedIds,
+  onlyFavorites,
+}: TrainMapProps) {
   const { trains, loading, error, viewMode } = useTrains();
-  const hasVisibleTrains = trains.some(
+
+  // Apply the "only show favorites" filter here rather than inside the
+  // layers so TrackLayer / StationLayer also scope to the user's picks
+  // (no point showing every route if they only want their 3 trains).
+  const visibleTrains = useMemo(() => {
+    if (!onlyFavorites) return trains;
+    return trains.filter((t) => savedIds.has(t.id));
+  }, [trains, onlyFavorites, savedIds]);
+
+  const hasVisibleTrains = visibleTrains.some(
     (t) =>
       typeof t.lat === "number" &&
       typeof t.lon === "number" &&
@@ -53,13 +66,14 @@ export default function TrainMap({ savedPairs = [] }: TrainMapProps) {
           maxZoom={19}
         />
         <ZoomControlBottomRight />
-        <TrackLayer trains={trains} />
-        <StationLayer trains={trains} />
+        <TrackLayer trains={visibleTrains} />
+        <StationLayer trains={visibleTrains} />
         <AnimatedTrainsLayer
-          trains={trains}
-          savedPairs={savedPairs}
+          trains={visibleTrains}
+          savedIds={savedIds}
           viewMode={viewMode}
         />
+        <FavoriteLayer />
         <ReplayLayer />
         <ReplayAllLayer />
       </MapContainer>
@@ -74,9 +88,11 @@ export default function TrainMap({ savedPairs = [] }: TrainMapProps) {
         <StatusPill tone="error">Failed to load: {error}</StatusPill>
       ) : !hasVisibleTrains ? (
         <StatusPill tone="warn">
-          {viewMode.kind === "live"
-            ? "No active trains right now."
-            : "No data captured at that time yet."}
+          {onlyFavorites
+            ? "None of your favorites are running right now."
+            : viewMode.kind === "live"
+              ? "No active trains right now."
+              : "No data captured at that time yet."}
         </StatusPill>
       ) : null}
 
@@ -527,6 +543,79 @@ function reportStatus(kind: "idle" | "preparing" | "playing" | "done", message: 
   );
 }
 
+// -------------------------------------------------------------------
+// FavoriteLayer — handles clicks on the popup's "Favorite this train"
+// button via document delegation. Toggles membership in saved_trains
+// and dispatches a "favorites changed" event that SavedTrainsPanel
+// listens to (avoids plumbing setters through several layers).
+// -------------------------------------------------------------------
+
+function FavoriteLayer() {
+  const { user } = useAuth();
+  const userRef = useRef(user);
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
+
+  useEffect(() => {
+    const onClick = async (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      const btn = target?.closest("[data-amtrak-favorite]") as
+        | HTMLButtonElement
+        | null;
+      if (!btn) return;
+      e.preventDefault();
+      e.stopPropagation();
+
+      const currentUser = userRef.current;
+      if (!currentUser) return;
+
+      const trainId = btn.getAttribute("data-amtrak-favorite");
+      if (!trainId) return;
+      const isSaved = btn.dataset.currentState === "saved";
+
+      // Optimistic UI: flip the button immediately.
+      btn.disabled = true;
+      const originalText = btn.textContent ?? "";
+      btn.textContent = isSaved ? "Removing…" : "Saving…";
+
+      try {
+        if (isSaved) {
+          const { error } = await getSupabase()
+            .from("saved_trains")
+            .delete()
+            .eq("user_id", currentUser.id)
+            .eq("train_id", trainId);
+          if (error) throw error;
+        } else {
+          const { error } = await getSupabase()
+            .from("saved_trains")
+            .insert({ user_id: currentUser.id, train_id: trainId });
+          if (error) throw error;
+        }
+        // Let the panel refetch its list + the map recolor.
+        window.dispatchEvent(new CustomEvent("amtrak:favorites-changed"));
+        // The popup will get rebuilt on the next trains update, but in the
+        // meantime update the button in-place so the user sees immediate
+        // feedback.
+        const nowSaved = !isSaved;
+        btn.dataset.currentState = nowSaved ? "saved" : "unsaved";
+        btn.textContent = nowSaved ? "★ Favorited" : "☆ Favorite this train";
+        btn.classList.toggle("is-favorited", nowSaved);
+      } catch {
+        btn.textContent = originalText;
+      } finally {
+        btn.disabled = false;
+      }
+    };
+
+    document.addEventListener("click", onClick);
+    return () => document.removeEventListener("click", onClick);
+  }, []);
+
+  return null;
+}
+
 function ReplayAllLayer() {
   const map = useMap();
   const { trains, setReplayAllActive } = useTrains();
@@ -850,15 +939,17 @@ interface MarkerState {
 
 interface AnimatedTrainsLayerProps {
   trains: Train[];
-  savedPairs: SavedPair[];
+  savedIds: Set<string>;
   viewMode: ViewMode;
 }
 
 function AnimatedTrainsLayer({
   trains,
-  savedPairs,
+  savedIds,
   viewMode,
 }: AnimatedTrainsLayerProps) {
+  const { user } = useAuth();
+  const canSave = !!user;
   const map = useMap();
   const { replayingTrainId, replayAllActive } = useTrains();
   const layerRef = useRef<L.LayerGroup | null>(null);
@@ -920,8 +1011,7 @@ function AnimatedTrainsLayer({
       }
       incomingIds.add(train.id);
 
-      const matchedPair = trainMatchesAnyPair(train, savedPairs);
-      const isSaved = matchedPair !== null;
+      const isSaved = savedIds.has(train.id);
       const headingDeg = headingToDegrees(train.heading);
 
       let state = statesRef.current.get(train.id);
@@ -940,7 +1030,7 @@ function AnimatedTrainsLayer({
           zIndexOffset: isSaved ? 1000 : 0,
           riseOnHover: true,
         });
-        marker.bindPopup(buildPopupHTML(train, matchedPair), {
+        marker.bindPopup(buildPopupHTML(train, { isSaved, canSave }), {
           closeButton: true,
           offset: [0, -4],
         });
@@ -958,7 +1048,7 @@ function AnimatedTrainsLayer({
         statesRef.current.set(train.id, state);
       } else {
         // Existing marker — refresh popup always (data may have changed)
-        state.marker.setPopupContent(buildPopupHTML(train, matchedPair));
+        state.marker.setPopupContent(buildPopupHTML(train, { isSaved, canSave }));
 
         if (isHistory) {
           // Static snapshot — snap to new position, no animation, never "angry".
@@ -1014,7 +1104,7 @@ function AnimatedTrainsLayer({
         statesRef.current.delete(id);
       }
     });
-  }, [trains, savedPairs, map]);
+  }, [trains, savedIds, canSave, isHistory, map]);
 
   // Single RAF loop drives ALL in-flight animations
   useEffect(() => {

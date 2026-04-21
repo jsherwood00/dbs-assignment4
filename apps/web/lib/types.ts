@@ -36,6 +36,13 @@ export interface SavedPair {
   created_at: string;
 }
 
+export interface SavedTrain {
+  id: string;
+  user_id: string;
+  train_id: string;
+  created_at: string;
+}
+
 export interface AmtrakerStation {
   code: string;
   name: string;

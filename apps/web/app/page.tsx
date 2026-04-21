@@ -2,8 +2,7 @@
 
 import { useCallback, useState } from "react";
 import dynamic from "next/dynamic";
-import { SavedPairsPanel } from "@/components/saved-pairs-panel";
-import type { SavedPair } from "@/lib/types";
+import { SavedTrainsPanel } from "@/components/saved-trains-panel";
 
 const TrainMap = dynamic(() => import("@/components/train-map"), {
   ssr: false,
@@ -15,18 +14,24 @@ const TrainMap = dynamic(() => import("@/components/train-map"), {
 });
 
 export default function HomePage() {
-  const [pairs, setPairs] = useState<SavedPair[]>([]);
-  const handlePairsChange = useCallback((next: SavedPair[]) => {
-    setPairs(next);
+  const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
+  const [onlyFavorites, setOnlyFavorites] = useState(false);
+
+  const handleSavedIdsChange = useCallback((next: Set<string>) => {
+    setSavedIds(next);
   }, []);
 
   return (
     <div className="relative flex-1">
       <div className="absolute inset-0">
-        <TrainMap savedPairs={pairs} />
+        <TrainMap savedIds={savedIds} onlyFavorites={onlyFavorites} />
       </div>
       <div className="pointer-events-none absolute right-4 top-4 z-[500] flex flex-col gap-3">
-        <SavedPairsPanel onPairsChange={handlePairsChange} />
+        <SavedTrainsPanel
+          onSavedIdsChange={handleSavedIdsChange}
+          onlyFavorites={onlyFavorites}
+          onOnlyFavoritesChange={setOnlyFavorites}
+        />
       </div>
     </div>
   );

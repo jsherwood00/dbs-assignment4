@@ -1,7 +1,7 @@
 // Pure helpers that produce HTML strings for Leaflet divIcons & popups.
 // Kept out of React so the imperative marker layer can use them directly.
 
-import type { SavedPair, Train } from "@/lib/types";
+import type { Train } from "@/lib/types";
 
 export function buildTrainFigureHTML(
   headingDeg: number,
@@ -55,16 +55,20 @@ export function buildTrainFigureHTML(
   `;
 }
 
-export function buildPopupHTML(train: Train, matchedPair: SavedPair | null): string {
+interface PopupOptions {
+  isSaved: boolean; // Is this train in the user's favorites?
+  canSave: boolean; // Is a logged-in user available to save?
+}
+
+export function buildPopupHTML(
+  train: Train,
+  { isSaved, canSave }: PopupOptions,
+): string {
   const nextStation = findNextStation(train);
   const delayMinutes = computeDelayMinutes(train);
 
   const statusBadge = train.status
     ? `<span class="amtrak-badge">${escape(train.status)}</span>`
-    : "";
-
-  const savedBadge = matchedPair
-    ? `<div class="amtrak-saved-pill">Serves your saved pair: ${escape(matchedPair.from_code)} → ${escape(matchedPair.to_code)}</div>`
     : "";
 
   const velocity =
@@ -91,6 +95,19 @@ export function buildPopupHTML(train: Train, matchedPair: SavedPair | null): str
     delay = `<div class="${cls}">${escape(text)}</div>`;
   }
 
+  // Favorite button — shown only when the user is logged in. Toggles
+  // between ★ Favorited (red fill) and ☆ Favorite (outline).
+  const favoriteBtn = canSave
+    ? `<button
+         type="button"
+         class="amtrak-favorite-btn ${isSaved ? "is-favorited" : ""}"
+         data-amtrak-favorite="${escape(train.id)}"
+         data-current-state="${isSaved ? "saved" : "unsaved"}"
+       >
+         ${isSaved ? "★ Favorited" : "☆ Favorite this train"}
+       </button>`
+    : "";
+
   return `
     <div class="amtrak-popup">
       <div class="amtrak-popup__header">
@@ -103,17 +120,19 @@ export function buildPopupHTML(train: Train, matchedPair: SavedPair | null): str
       <div class="amtrak-muted">
         ${escape(train.origin_code ?? "?")} → ${escape(train.dest_code ?? "?")}
       </div>
-      ${savedBadge}
       ${velocity}
       ${next}
       ${delay}
-      <button
-        type="button"
-        class="amtrak-replay-btn"
-        data-amtrak-replay="${escape(train.id)}"
-      >
-        ▶ Replay last hour
-      </button>
+      <div class="amtrak-popup__actions">
+        ${favoriteBtn}
+        <button
+          type="button"
+          class="amtrak-replay-btn"
+          data-amtrak-replay="${escape(train.id)}"
+        >
+          ▶ Replay last hour
+        </button>
+      </div>
     </div>
   `;
 }
