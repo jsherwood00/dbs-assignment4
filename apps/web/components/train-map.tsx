@@ -596,11 +596,15 @@ function ReplayAllLayer() {
       const trails = new Map<string, L.Polyline>();
       const trailCoords = new Map<string, [number, number][]>();
 
-      const buildIcon = (headingDeg: number) =>
+      // Replay-All uses the normal locomotive look (silver at rest, ember
+      // when the train is actually moving this frame) — seeing every train
+      // as a cyan phantom blur was too chaotic. Ghost style is reserved for
+      // the single-train replay where the phantom metaphor works.
+      const buildIcon = (headingDeg: number, moving: boolean) =>
         L.divIcon({
           className: "",
-          html: buildTrainFigureHTML(headingDeg, false, false, /* ghost */ true),
-          iconSize: [28, 18], // a touch smaller for the fleet
+          html: buildTrainFigureHTML(headingDeg, false, moving, false),
+          iconSize: [28, 18],
           iconAnchor: [14, 9],
         });
 
@@ -611,14 +615,16 @@ function ReplayAllLayer() {
         const seedHeadingStr = headingById.get(id);
         const seedHeading = seedHeadingStr ? headingToDegrees(seedHeadingStr) : 0;
         const g = L.marker(first, {
-          icon: buildIcon(seedHeading),
+          icon: buildIcon(seedHeading, false),
           interactive: false,
           zIndexOffset: 1500,
         }).addTo(lg);
+        // Subtle short trail — just enough to suggest motion without
+        // covering the map in a spiderweb of cyan lines.
         const tr = L.polyline([first], {
-          color: "#8ee7f4",
-          opacity: 0.45,
-          weight: 1.5,
+          color: "#5a6d82",
+          opacity: 0.35,
+          weight: 1,
           lineCap: "round",
           className: "amtrak-replayall-trail",
           interactive: false,
@@ -661,27 +667,39 @@ function ReplayAllLayer() {
           currentFrame / (FRAMES - 1),
         );
 
+        const TRAIL_LEN = 4; // how many recent positions to keep as a wake
         perTrain.forEach((arr, id) => {
           const pos = arr[currentFrame];
           if (!pos) return;
           const g = ghosts.get(id);
           const tr = trails.get(id);
           if (!g || !tr) return;
-          // Compute heading from motion since last known position.
+
           const coords = trailCoords.get(id)!;
           const prev = coords[coords.length - 1];
-          const moved =
-            approxMeters(prev[0], prev[1], pos[0], pos[1]) > 20;
-          if (moved) {
-            const heading = bearingDeg(prev[0], prev[1], pos[0], pos[1]);
-            const last = lastHeadingById.get(id) ?? -999;
-            if (Math.abs(heading - last) > 8) {
-              g.setIcon(buildIcon(heading));
-              lastHeadingById.set(id, heading);
-            }
+          const movedMeters = approxMeters(prev[0], prev[1], pos[0], pos[1]);
+          const moved = movedMeters > 60; // same threshold as live angry
+
+          // Rebuild icon when either heading or moving state changes.
+          const heading = moved
+            ? bearingDeg(prev[0], prev[1], pos[0], pos[1])
+            : (lastHeadingById.get(id) ?? 0);
+          const lastH = lastHeadingById.get(id) ?? -999;
+          const headingChanged = Math.abs(heading - lastH) > 8;
+          const wasMoving = (g as unknown as { _amtrakMoving?: boolean })
+            ._amtrakMoving;
+          if (headingChanged || wasMoving !== moved) {
+            g.setIcon(buildIcon(heading, moved));
+            lastHeadingById.set(id, heading);
+            (g as unknown as { _amtrakMoving?: boolean })._amtrakMoving =
+              moved;
           }
+
           g.setLatLng(pos);
+
+          // Keep only the last few points for a readable wake.
           coords.push(pos);
+          if (coords.length > TRAIL_LEN) coords.shift();
           tr.setLatLngs(coords);
         });
       }, FRAME_MS);
