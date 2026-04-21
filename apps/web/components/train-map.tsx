@@ -13,7 +13,7 @@ import { buildPopupHTML, buildTrainFigureHTML } from "./train-figure";
 
 const INITIAL_CENTER: [number, number] = [39, -96];
 const INITIAL_ZOOM = 4;
-const ANIMATION_DURATION_MS = 10_000;
+const ANIMATION_DURATION_MS = 15_000;
 // Minimum lat/lon delta (degrees) to consider a train "moved" vs. GPS jitter.
 // 0.0001° is roughly 11 meters — well under a typical Amtrak 30s travel distance
 // (>600m even at slow speeds) but above civilian GPS jitter (~5m).
