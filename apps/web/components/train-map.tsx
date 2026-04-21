@@ -8,13 +8,14 @@ import type { AmtrakerStation, Train, SavedPair } from "@/lib/types";
 import { headingToDegrees } from "@/lib/heading";
 import { trainMatchesAnyPair } from "@/lib/pair";
 import { getStationMap, loadStations } from "@/lib/stations";
+import { getSupabase } from "@/lib/supabase";
 import { useTrains, type ViewMode } from "./trains-context";
 import { buildPopupHTML, buildTrainFigureHTML } from "./train-figure";
 import { HistorySlider } from "./history-slider";
 
 const INITIAL_CENTER: [number, number] = [39, -96];
 const INITIAL_ZOOM = 4;
-const ANIMATION_DURATION_MS = 5_000;
+const ANIMATION_DURATION_MS = 2_000;
 // Minimum on-the-ground distance (meters) between consecutive positions for
 // a train to count as "actually moving" and get the angry / powering visual.
 // Well above civilian GPS jitter (~5–15 m) and well under even a crawling
@@ -42,7 +43,7 @@ export default function TrainMap({ savedPairs = [] }: TrainMapProps) {
         center={INITIAL_CENTER}
         zoom={INITIAL_ZOOM}
         scrollWheelZoom
-        className="h-full w-full bg-[#1a140d]"
+        className="h-full w-full bg-[#05080e]"
         zoomControl={false}
       >
         <TileLayer
@@ -52,11 +53,13 @@ export default function TrainMap({ savedPairs = [] }: TrainMapProps) {
         />
         <ZoomControlBottomRight />
         <TrackLayer trains={trains} />
+        <StationLayer trains={trains} />
         <AnimatedTrainsLayer
           trains={trains}
           savedPairs={savedPairs}
           viewMode={viewMode}
         />
+        <ReplayLayer />
       </MapContainer>
 
       {loading ? (
@@ -150,7 +153,7 @@ function TrackLayer({ trains }: { trains: Train[] }) {
       // Two-layer rail: dark base + brass top so it reads on both light
       // parchment tiles and darker terrain.
       const base = L.polyline(coords, {
-        color: "#2b1f15",
+        color: "#0d1520",
         opacity: 0.6,
         weight: 3.2,
         lineCap: "round",
@@ -158,7 +161,7 @@ function TrackLayer({ trains }: { trains: Train[] }) {
         smoothFactor: 1.5,
       });
       const top = L.polyline(coords, {
-        color: "#c5a572",
+        color: "#5ecde0",
         opacity: 0.85,
         weight: 1.4,
         dashArray: "4 6",
@@ -171,6 +174,256 @@ function TrackLayer({ trains }: { trains: Train[] }) {
       drawnRef.current.add(routeName);
     }
   }, [trains, stations]);
+
+  return null;
+}
+
+// -------------------------------------------------------------------
+// StationLayer — renders a cyan dot for each active station;
+// dots pulse when a train is currently docked at that station.
+// -------------------------------------------------------------------
+
+function StationLayer({ trains }: { trains: Train[] }) {
+  const map = useMap();
+  const [stations, setStations] = useState<AmtrakerStation[] | null>(null);
+  const layerRef = useRef<L.LayerGroup | null>(null);
+  const markersRef = useRef<Map<string, L.CircleMarker>>(new Map());
+
+  useEffect(() => {
+    let cancelled = false;
+    loadStations().then((list) => {
+      if (!cancelled) setStations(list);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const lg = L.layerGroup().addTo(map);
+    layerRef.current = lg;
+    return () => {
+      lg.remove();
+      layerRef.current = null;
+      markersRef.current.clear();
+    };
+  }, [map]);
+
+  // Build or update the set of station markers when stations or trains change
+  useEffect(() => {
+    const lg = layerRef.current;
+    if (!lg || !stations) return;
+
+    // Active network = union of station codes referenced by any train's stations[]
+    const active = new Set<string>();
+    for (const t of trains) {
+      if (t.stations) for (const s of t.stations) active.add(s.code);
+    }
+
+    // Stations where a train is currently docked (between arr and dep).
+    const occupied = new Set<string>();
+    const now = Date.now();
+    for (const t of trains) {
+      if (!t.stations) continue;
+      for (const s of t.stations) {
+        const arr = s.arr ? new Date(s.arr).getTime() : NaN;
+        const dep = s.dep ? new Date(s.dep).getTime() : NaN;
+        if (Number.isFinite(arr) && Number.isFinite(dep) && arr <= now && now <= dep) {
+          occupied.add(s.code);
+        }
+      }
+    }
+
+    const stationMap = getStationMap(stations);
+
+    // Add / update markers for every active station
+    for (const code of active) {
+      const s = stationMap.get(code);
+      if (!s || typeof s.lat !== "number" || typeof s.lon !== "number") continue;
+      const isOccupied = occupied.has(code);
+      const className = isOccupied
+        ? "amtrak-station amtrak-station-active"
+        : "amtrak-station";
+
+      let marker = markersRef.current.get(code);
+      if (!marker) {
+        marker = L.circleMarker([s.lat, s.lon], {
+          radius: 3,
+          className,
+          interactive: true,
+          bubblingMouseEvents: false,
+        });
+        marker.bindTooltip(`${s.name} (${s.code})`, {
+          direction: "top",
+          offset: [0, -4],
+          className: "amtrak-station-tooltip",
+        });
+        marker.addTo(lg);
+        markersRef.current.set(code, marker);
+      } else {
+        // only update className if changed
+        const el = (marker as unknown as { _path?: SVGPathElement })._path;
+        if (el) el.setAttribute("class", className);
+      }
+    }
+
+    // Remove markers for stations that are no longer in the active set
+    markersRef.current.forEach((marker, code) => {
+      if (!active.has(code)) {
+        lg.removeLayer(marker);
+        markersRef.current.delete(code);
+      }
+    });
+  }, [trains, stations]);
+
+  return null;
+}
+
+// -------------------------------------------------------------------
+// ReplayLayer — handles the "Replay last hour" popup button:
+// fetches all snapshots for a train from the history table and animates
+// a glowing ghost marker through them with a growing trail.
+// -------------------------------------------------------------------
+
+interface PositionRow {
+  lat: number;
+  lon: number;
+  snapshot_at: string;
+}
+
+function ReplayLayer() {
+  const map = useMap();
+  const activeRef = useRef<{
+    ghost: L.CircleMarker;
+    trail: L.Polyline;
+    cancel: () => void;
+  } | null>(null);
+
+  useEffect(() => {
+    // Delegate clicks on any replay button
+    const onClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      const btn = target?.closest("[data-amtrak-replay]") as
+        | HTMLButtonElement
+        | null;
+      if (!btn) return;
+      const trainId = btn.getAttribute("data-amtrak-replay");
+      if (!trainId) return;
+      e.preventDefault();
+      e.stopPropagation();
+      runReplay(trainId, btn);
+    };
+
+    document.addEventListener("click", onClick);
+    return () => {
+      document.removeEventListener("click", onClick);
+      activeRef.current?.cancel();
+      activeRef.current = null;
+    };
+
+    async function runReplay(trainId: string, btn: HTMLButtonElement) {
+      // Tear down any in-flight replay
+      activeRef.current?.cancel();
+      activeRef.current = null;
+
+      const originalText = btn.textContent ?? "";
+      btn.disabled = true;
+      btn.textContent = "Loading…";
+
+      const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+      const { data, error } = await getSupabase()
+        .from("train_positions")
+        .select("lat, lon, snapshot_at")
+        .eq("train_id", trainId)
+        .gte("snapshot_at", since)
+        .order("snapshot_at", { ascending: true });
+
+      if (error || !data || data.length < 2) {
+        btn.textContent = "No history yet";
+        setTimeout(() => {
+          btn.disabled = false;
+          btn.textContent = originalText;
+        }, 1800);
+        return;
+      }
+
+      const rows = (data as PositionRow[]).filter(
+        (r) => typeof r.lat === "number" && typeof r.lon === "number",
+      );
+      if (rows.length < 2) {
+        btn.textContent = "No history yet";
+        setTimeout(() => {
+          btn.disabled = false;
+          btn.textContent = originalText;
+        }, 1800);
+        return;
+      }
+
+      btn.textContent = "▶ Replaying…";
+
+      const trail = L.polyline([], {
+        className: "amtrak-replay-trail",
+        interactive: false,
+        smoothFactor: 1.2,
+      }).addTo(map);
+
+      const ghost = L.circleMarker([rows[0].lat, rows[0].lon], {
+        radius: 7,
+        className: "amtrak-replay-ghost",
+        interactive: false,
+      }).addTo(map);
+
+      // Total replay duration: 8s regardless of data density
+      const DURATION_MS = 8000;
+      const start = performance.now();
+      let raf: number | null = null;
+      let cancelled = false;
+
+      const tick = () => {
+        if (cancelled) return;
+        const elapsed = performance.now() - start;
+        const t = Math.min(1, elapsed / DURATION_MS);
+        const idx = t * (rows.length - 1);
+        const i0 = Math.floor(idx);
+        const i1 = Math.min(i0 + 1, rows.length - 1);
+        const frac = idx - i0;
+        const lat = rows[i0].lat + (rows[i1].lat - rows[i0].lat) * frac;
+        const lon = rows[i0].lon + (rows[i1].lon - rows[i0].lon) * frac;
+        ghost.setLatLng([lat, lon]);
+
+        // Grow the trail up to the current interpolated point
+        const coords = rows.slice(0, i0 + 1).map((r) => [r.lat, r.lon] as [number, number]);
+        coords.push([lat, lon]);
+        trail.setLatLngs(coords);
+
+        if (t < 1) {
+          raf = requestAnimationFrame(tick);
+        } else {
+          // Hold for a beat, then fade out
+          setTimeout(() => {
+            if (cancelled) return;
+            map.removeLayer(trail);
+            map.removeLayer(ghost);
+            btn.disabled = false;
+            btn.textContent = originalText;
+            activeRef.current = null;
+          }, 1000);
+        }
+      };
+
+      const cancel = () => {
+        cancelled = true;
+        if (raf !== null) cancelAnimationFrame(raf);
+        map.removeLayer(trail);
+        map.removeLayer(ghost);
+        btn.disabled = false;
+        btn.textContent = originalText;
+      };
+
+      activeRef.current = { ghost, trail, cancel };
+      raf = requestAnimationFrame(tick);
+    }
+  }, [map]);
 
   return null;
 }
@@ -196,10 +449,10 @@ function StatusPill({
 }) {
   const toneClasses =
     tone === "error"
-      ? "border-[#6b3a2e] bg-[#2d1812] text-[#d9593a]"
+      ? "border-[#6b2e2e] bg-[#260c0c] text-[#ef4c4c]"
       : tone === "warn"
-        ? "border-[#6b5224] bg-[#2d2312] text-[#f0c565]"
-        : "border-[#4a3520] bg-[#2b1f15] text-[#f0e4cb]";
+        ? "border-[#6b5224] bg-[#221a0a] text-[#f0c565]"
+        : "border-[#1c2a3e] bg-[#0d1520] text-[#d8e4f0]";
   return (
     <div
       className={`pointer-events-none absolute left-1/2 top-4 z-[1000] -translate-x-1/2 rounded-full border px-3 py-1.5 text-xs backdrop-blur ${toneClasses}`}

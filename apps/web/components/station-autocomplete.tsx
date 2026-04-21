@@ -88,7 +88,7 @@ export function StationAutocomplete({
   return (
     <div ref={containerRef} className="relative">
       <label className="block">
-        <span className="mb-1 block text-xs font-medium uppercase tracking-wider text-[#a08866]">
+        <span className="mb-1 block text-xs font-medium uppercase tracking-wider text-[#5a6d82]">
           {label}
         </span>
         <input
@@ -104,11 +104,11 @@ export function StationAutocomplete({
           }}
           onFocus={() => setOpen(true)}
           onKeyDown={onKeyDown}
-          className="w-full rounded-md border border-[#4a3520] bg-[#1a140d] px-3 py-2 text-sm text-[#f0e4cb] outline-none transition-colors placeholder:text-[#6d5a40] focus:border-[#c5a572]"
+          className="w-full rounded-md border border-[#1c2a3e] bg-[#05080e] px-3 py-2 text-sm text-[#d8e4f0] outline-none transition-colors placeholder:text-[#3a4a5e] focus:border-[#5ecde0]"
         />
       </label>
       {open && matches.length > 0 ? (
-        <ul className="absolute z-10 mt-1 max-h-64 w-full overflow-auto rounded-md border border-[#4a3520] bg-[#2b1f15] shadow-xl">
+        <ul className="absolute z-10 mt-1 max-h-64 w-full overflow-auto rounded-md border border-[#1c2a3e] bg-[#0d1520] shadow-xl">
           {matches.map((s, i) => (
             <li key={s.code}>
               <button
@@ -120,12 +120,12 @@ export function StationAutocomplete({
                 }}
                 className={`flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm ${
                   i === highlight
-                    ? "bg-[#4a3520] text-[#f0e4cb]"
-                    : "text-[#f0e4cb] hover:bg-[#4a3520]"
+                    ? "bg-[#1c2a3e] text-[#d8e4f0]"
+                    : "text-[#d8e4f0] hover:bg-[#1c2a3e]"
                 }`}
               >
                 <span className="truncate">{s.name}</span>
-                <span className="font-mono text-[11px] text-[#a08866]">
+                <span className="font-mono text-[11px] text-[#5a6d82]">
                   {s.code}
                 </span>
               </button>

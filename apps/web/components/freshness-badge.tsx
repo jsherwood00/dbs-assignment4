@@ -17,7 +17,7 @@ export function FreshnessBadge() {
     const label =
       minsBack < 1 ? "just now" : minsBack === 1 ? "1 min ago" : `${minsBack} min ago`;
     return (
-      <span className="hidden items-center gap-1.5 rounded-full border border-[#6b5224] bg-[#2d2312] px-2.5 py-1 text-[11px] uppercase tracking-wider text-[#f0c565] md:inline-flex">
+      <span className="hidden items-center gap-1.5 rounded-full border border-[#6b5224] bg-[#221a0a] px-2.5 py-1 text-[11px] uppercase tracking-wider text-[#f0c565] md:inline-flex">
         <Dot className="bg-[#f0c565]" />
         history · {label}
       </span>
@@ -26,8 +26,8 @@ export function FreshnessBadge() {
 
   if (loading) {
     return (
-      <span className="hidden items-center gap-1.5 rounded-full border border-[#4a3520] px-2.5 py-1 text-[11px] uppercase tracking-wider text-[#a08866] md:inline-flex">
-        <Dot className="bg-[#a08866] animate-pulse" />
+      <span className="hidden items-center gap-1.5 rounded-full border border-[#1c2a3e] px-2.5 py-1 text-[11px] uppercase tracking-wider text-[#5a6d82] md:inline-flex">
+        <Dot className="bg-[#5a6d82] animate-pulse" />
         loading
       </span>
     );
@@ -35,8 +35,8 @@ export function FreshnessBadge() {
 
   if (!lastUpdatedAt) {
     return (
-      <span className="hidden items-center gap-1.5 rounded-full border border-[#6b3a2e] bg-[#2d1812] px-2.5 py-1 text-[11px] uppercase tracking-wider text-[#d9593a] md:inline-flex">
-        <Dot className="bg-[#d9593a]" />
+      <span className="hidden items-center gap-1.5 rounded-full border border-[#6b2e2e] bg-[#260c0c] px-2.5 py-1 text-[11px] uppercase tracking-wider text-[#ef4c4c] md:inline-flex">
+        <Dot className="bg-[#ef4c4c]" />
         no data
       </span>
     );
@@ -65,21 +65,21 @@ function Dot({ className }: { className?: string }) {
 function classify(ageMs: number) {
   if (ageMs < 90_000) {
     return {
-      classes: "border-[#3e5028] bg-[#1b2614] text-[#8ab06e]",
-      dot: "bg-[#8ab06e]",
+      classes: "border-[#225a3f] bg-[#0d2418] text-[#64e2a4]",
+      dot: "bg-[#64e2a4]",
       pulse: true,
     };
   }
   if (ageMs < 5 * 60_000) {
     return {
-      classes: "border-[#6b5224] bg-[#2d2312] text-[#f0c565]",
+      classes: "border-[#6b5224] bg-[#221a0a] text-[#f0c565]",
       dot: "bg-[#f0c565]",
       pulse: false,
     };
   }
   return {
-    classes: "border-[#6b3a2e] bg-[#2d1812] text-[#d9593a]",
-    dot: "bg-[#d9593a]",
+    classes: "border-[#6b2e2e] bg-[#260c0c] text-[#ef4c4c]",
+    dot: "bg-[#ef4c4c]",
     pulse: false,
   };
 }

@@ -37,7 +37,7 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} ${cinzel.variable} h-full antialiased`}
     >
-      <body className="flex h-full min-h-full flex-col bg-[#1a140d] text-[#f0e4cb]">
+      <body className="flex h-full min-h-full flex-col bg-[#05080e] text-[#d8e4f0]">
         <AuthProvider>
           <TrainsProvider>
             <NavBar />

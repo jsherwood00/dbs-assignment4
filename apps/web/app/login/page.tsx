@@ -43,13 +43,13 @@ function AuthForm({ mode }: { mode: "login" }) {
   return (
     <form
       onSubmit={onSubmit}
-      className="space-y-5 rounded-xl border border-[#4a3520] bg-[#2b1f15] p-6 shadow-lg"
+      className="space-y-5 rounded-xl border border-[#1c2a3e] bg-[#0d1520] p-6 shadow-lg"
     >
       <div>
-        <h1 className="text-xl font-semibold tracking-tight text-[#f0e4cb]">
+        <h1 className="text-xl font-semibold tracking-tight text-[#d8e4f0]">
           {mode === "login" ? "Log in" : "Sign up"}
         </h1>
-        <p className="mt-1 text-sm text-[#a08866]">
+        <p className="mt-1 text-sm text-[#5a6d82]">
           {mode === "login"
             ? "Welcome back — save station pairs to track your trips."
             : "Create an account to save station pairs and track your trips."}
@@ -77,7 +77,7 @@ function AuthForm({ mode }: { mode: "login" }) {
       </div>
 
       {err ? (
-        <div className="rounded-md border border-[#6b3a2e] bg-[#2d1812] px-3 py-2 text-sm text-[#d9593a]">
+        <div className="rounded-md border border-[#6b2e2e] bg-[#260c0c] px-3 py-2 text-sm text-[#ef4c4c]">
           {err}
         </div>
       ) : null}
@@ -85,14 +85,14 @@ function AuthForm({ mode }: { mode: "login" }) {
       <button
         type="submit"
         disabled={submitting}
-        className="w-full rounded-md bg-[#c5a572] px-4 py-2 text-sm font-medium text-[#1a140d] transition-colors hover:bg-[#dcb98a] disabled:cursor-not-allowed disabled:opacity-60"
+        className="w-full rounded-md bg-[#5ecde0] px-4 py-2 text-sm font-medium text-[#05080e] transition-colors hover:bg-[#8ee7f4] disabled:cursor-not-allowed disabled:opacity-60"
       >
         {submitting ? "Logging in…" : "Log in"}
       </button>
 
-      <p className="text-center text-sm text-[#a08866]">
+      <p className="text-center text-sm text-[#5a6d82]">
         No account?{" "}
-        <Link href="/signup" className="text-[#c5a572] hover:underline">
+        <Link href="/signup" className="text-[#5ecde0] hover:underline">
           Sign up
         </Link>
       </p>
@@ -115,14 +115,14 @@ function Field({
 >) {
   return (
     <label className="block">
-      <span className="mb-1 block text-xs font-medium uppercase tracking-wider text-[#a08866]">
+      <span className="mb-1 block text-xs font-medium uppercase tracking-wider text-[#5a6d82]">
         {label}
       </span>
       <input
         {...rest}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-md border border-[#4a3520] bg-[#1a140d] px-3 py-2 text-sm text-[#f0e4cb] outline-none transition-colors placeholder:text-[#6d5a40] focus:border-[#c5a572]"
+        className="w-full rounded-md border border-[#1c2a3e] bg-[#05080e] px-3 py-2 text-sm text-[#d8e4f0] outline-none transition-colors placeholder:text-[#3a4a5e] focus:border-[#5ecde0]"
       />
     </label>
   );

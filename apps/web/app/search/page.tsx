@@ -99,11 +99,11 @@ export default function SearchPage() {
 
   return (
     <div className="mx-auto w-full max-w-3xl flex-1 px-4 py-6">
-      <div className="rounded-xl border border-[#4a3520] bg-[#2b1f15] p-5 shadow-lg">
-        <h1 className="text-lg font-semibold tracking-tight text-[#f0e4cb]">
+      <div className="rounded-xl border border-[#1c2a3e] bg-[#0d1520] p-5 shadow-lg">
+        <h1 className="text-lg font-semibold tracking-tight text-[#d8e4f0]">
           Find direct service
         </h1>
-        <p className="mt-1 text-sm text-[#a08866]">
+        <p className="mt-1 text-sm text-[#5a6d82]">
           Enter two stations — we&apos;ll show every active train that serves
           both in order.
         </p>
@@ -120,7 +120,7 @@ export default function SearchPage() {
             onClick={swap}
             aria-label="Swap from and to"
             title="Swap"
-            className="mb-[1px] inline-flex h-[38px] items-center justify-center rounded-md border border-[#4a3520] bg-[#1a140d] px-3 text-[#a08866] hover:border-[#c5a572] hover:text-[#c5a572] sm:self-end"
+            className="mb-[1px] inline-flex h-[38px] items-center justify-center rounded-md border border-[#1c2a3e] bg-[#05080e] px-3 text-[#5a6d82] hover:border-[#5ecde0] hover:text-[#5ecde0] sm:self-end"
           >
             <svg
               viewBox="0 0 24 24"
@@ -145,12 +145,12 @@ export default function SearchPage() {
         </div>
 
         {from && to ? (
-          <div className="mt-4 flex items-center justify-between gap-3 rounded-md border border-[#4a3520] bg-[#1a140d] px-3 py-2">
-            <div className="text-sm text-[#f0e4cb]">
+          <div className="mt-4 flex items-center justify-between gap-3 rounded-md border border-[#1c2a3e] bg-[#05080e] px-3 py-2">
+            <div className="text-sm text-[#d8e4f0]">
               <span className="font-medium">{from.code}</span>{" "}
-              <span className="text-[#a08866]">→</span>{" "}
+              <span className="text-[#5a6d82]">→</span>{" "}
               <span className="font-medium">{to.code}</span>{" "}
-              <span className="text-[#a08866]">
+              <span className="text-[#5a6d82]">
                 ({results.length}{" "}
                 {results.length === 1 ? "direct train" : "direct trains"})
               </span>
@@ -162,8 +162,8 @@ export default function SearchPage() {
                 disabled={savingKey === `${from.code}-${to.code}`}
                 className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors disabled:opacity-60 ${
                   pairSaved
-                    ? "border border-[#6b5224] bg-[#2d2312] text-[#f0c565]"
-                    : "border border-[#4a3520] bg-[#2b1f15] text-[#f0e4cb] hover:border-[#c5a572] hover:text-[#c5a572]"
+                    ? "border border-[#6b5224] bg-[#221a0a] text-[#f0c565]"
+                    : "border border-[#1c2a3e] bg-[#0d1520] text-[#d8e4f0] hover:border-[#5ecde0] hover:text-[#5ecde0]"
                 }`}
               >
                 <svg
@@ -184,7 +184,7 @@ export default function SearchPage() {
             ) : (
               <Link
                 href="/login"
-                className="inline-flex items-center gap-1.5 rounded-md border border-[#4a3520] bg-[#2b1f15] px-3 py-1.5 text-sm text-[#f0e4cb] hover:border-[#c5a572] hover:text-[#c5a572]"
+                className="inline-flex items-center gap-1.5 rounded-md border border-[#1c2a3e] bg-[#0d1520] px-3 py-1.5 text-sm text-[#d8e4f0] hover:border-[#5ecde0] hover:text-[#5ecde0]"
               >
                 Log in to save
               </Link>
@@ -193,7 +193,7 @@ export default function SearchPage() {
         ) : null}
 
         {error ? (
-          <div className="mt-3 rounded-md border border-[#6b3a2e] bg-[#2d1812] px-3 py-2 text-sm text-[#d9593a]">
+          <div className="mt-3 rounded-md border border-[#6b2e2e] bg-[#260c0c] px-3 py-2 text-sm text-[#ef4c4c]">
             {error}
           </div>
         ) : null}
@@ -201,7 +201,7 @@ export default function SearchPage() {
 
       <div className="mt-6 space-y-2">
         {from && to && results.length === 0 ? (
-          <div className="rounded-md border border-[#4a3520] bg-[#2b1f15] px-4 py-6 text-center text-sm text-[#a08866]">
+          <div className="rounded-md border border-[#1c2a3e] bg-[#0d1520] px-4 py-6 text-center text-sm text-[#5a6d82]">
             No direct service found for this pair right now. Try a different
             combination — or come back later, since this shows only trains
             currently running.
@@ -232,19 +232,19 @@ function TrainResultCard({
 }) {
   const next = findNextStation(train);
   return (
-    <div className="rounded-md border border-[#4a3520] bg-[#2b1f15] px-4 py-3">
+    <div className="rounded-md border border-[#1c2a3e] bg-[#0d1520] px-4 py-3">
       <div className="flex items-baseline justify-between gap-3">
-        <div className="text-sm font-semibold text-[#f0e4cb]">
+        <div className="text-sm font-semibold text-[#d8e4f0]">
           {train.route_name}{" "}
-          <span className="font-normal text-[#a08866]">#{train.train_num}</span>
+          <span className="font-normal text-[#5a6d82]">#{train.train_num}</span>
         </div>
         {train.status ? (
-          <span className="rounded-full border border-[#4a3520] px-2 py-0.5 text-[10px] uppercase tracking-wider text-[#a08866]">
+          <span className="rounded-full border border-[#1c2a3e] px-2 py-0.5 text-[10px] uppercase tracking-wider text-[#5a6d82]">
             {train.status}
           </span>
         ) : null}
       </div>
-      <div className="mt-1 text-xs text-[#a08866]">
+      <div className="mt-1 text-xs text-[#5a6d82]">
         {train.origin_code} → {train.dest_code}{" "}
         <span className="mx-1">·</span>
         <span className="text-[#f0c565]">

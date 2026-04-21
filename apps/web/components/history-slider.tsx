@@ -49,28 +49,28 @@ export function HistorySlider() {
       className="pointer-events-auto absolute bottom-5 left-1/2 z-[600] -translate-x-1/2"
       style={{ minWidth: 520 }}
     >
-      <div className="flex items-center gap-3 rounded-full border border-[#4a3520] bg-[#2b1f15]/95 px-4 py-2.5 shadow-xl backdrop-blur">
+      <div className="flex items-center gap-3 rounded-full border border-[#1c2a3e] bg-[#0d1520]/95 px-4 py-2.5 shadow-xl backdrop-blur">
         <button
           type="button"
           onClick={() => setViewMode({ kind: "live" })}
           title="Return to live view"
           className={`flex h-7 items-center gap-1.5 rounded-full border px-3 text-[10px] font-bold uppercase tracking-[0.15em] transition-colors ${
             viewMode.kind === "live"
-              ? "border-[#3e5028] bg-[#1b2614] text-[#8ab06e]"
-              : "border-[#4a3520] bg-[#1a140d] text-[#a08866] hover:border-[#c5a572] hover:text-[#f0e4cb]"
+              ? "border-[#225a3f] bg-[#0d2418] text-[#64e2a4]"
+              : "border-[#1c2a3e] bg-[#05080e] text-[#5a6d82] hover:border-[#5ecde0] hover:text-[#d8e4f0]"
           }`}
         >
           <span
             aria-hidden
             className={`inline-block h-1.5 w-1.5 rounded-full ${
-              viewMode.kind === "live" ? "bg-[#8ab06e] animate-pulse" : "bg-[#a08866]"
+              viewMode.kind === "live" ? "bg-[#64e2a4] animate-pulse" : "bg-[#5a6d82]"
             }`}
           />
           Live
         </button>
 
         <div className="flex flex-1 items-center gap-3">
-          <span className="font-display text-[10px] font-bold uppercase tracking-[0.18em] text-[#a08866]">
+          <span className="font-display text-[10px] font-bold uppercase tracking-[0.18em] text-[#5a6d82]">
             −1h
           </span>
           <input
@@ -83,7 +83,7 @@ export function HistorySlider() {
             className="history-slider flex-1"
             aria-label="Time travel slider"
           />
-          <span className="font-display text-[10px] font-bold uppercase tracking-[0.18em] text-[#a08866]">
+          <span className="font-display text-[10px] font-bold uppercase tracking-[0.18em] text-[#5a6d82]">
             now
           </span>
         </div>
@@ -91,13 +91,13 @@ export function HistorySlider() {
         <div className="flex min-w-[82px] flex-col items-end leading-none">
           <span
             className={`font-display text-[11px] font-bold uppercase tracking-[0.18em] ${
-              viewMode.kind === "live" ? "text-[#8ab06e]" : "text-[#f0c565]"
+              viewMode.kind === "live" ? "text-[#64e2a4]" : "text-[#f0c565]"
             }`}
           >
             {label}
           </span>
           {absoluteTime ? (
-            <span className="mt-0.5 text-[10px] text-[#a08866]">
+            <span className="mt-0.5 text-[10px] text-[#5a6d82]">
               {absoluteTime}
             </span>
           ) : null}

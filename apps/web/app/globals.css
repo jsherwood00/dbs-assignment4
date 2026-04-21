@@ -1,20 +1,21 @@
 @import "tailwindcss";
 
 :root {
-  /* Dark Cartographer palette (medieval-ish) */
-  --bg: #1a140d;              /* deep walnut */
-  --bg-surface: #2b1f15;      /* leather panel */
-  --border: #4a3520;          /* brass trim */
-  --text: #f0e4cb;            /* parchment ink */
-  --muted: #a08866;           /* faded ink */
-  --accent: #c5a572;          /* brass */
-  --accent-hi: #dcb98a;       /* polished brass */
-  --gold: #f0c565;            /* illuminated gold for saved pairs */
-  --green: #8ab06e;           /* moss (on-time/positive) */
-  --red: #d9593a;             /* ember (moving/angry/late) */
-  --ember-hot: #ff6d1e;       /* hottest fire */
-  --soot: rgba(40, 28, 20, 0.9);
-  --steam: rgba(235, 220, 190, 0.85);
+  /* Dystopian-sci-fi palette: deep space background, cool cyan accents,
+     amber for data/gold, ember red for heat/warnings. */
+  --bg: #05080e;              /* near-black, slight blue tint */
+  --bg-surface: #0d1520;      /* dark chrome panel */
+  --border: #1c2a3e;          /* cool navy trim */
+  --text: #d8e4f0;            /* cool off-white */
+  --muted: #5a6d82;           /* steel gray */
+  --accent: #5ecde0;          /* ice cyan */
+  --accent-hi: #8ee7f4;       /* brighter cyan */
+  --gold: #f0c565;            /* amber (saved / warn) */
+  --green: #64e2a4;           /* phosphor green (on-time / positive) */
+  --red: #ef4c4c;             /* warning red */
+  --ember-hot: #ff4d1a;       /* moving train fire */
+  --cyan-glow: rgba(94, 205, 224, 0.55);
+  --steam: rgba(190, 215, 230, 0.9);
 }
 
 @theme inline {
@@ -33,15 +34,15 @@ body {
   color-scheme: dark;
 }
 
-/* Display face reserved for the app title + page headings that should read "medieval". */
 .font-display {
   font-family: var(--font-cinzel), Georgia, serif;
   letter-spacing: 0.05em;
 }
 
 /* ---------- Leaflet tile treatment ----------
- * OSM tiles, sepia-warmed so the whole map looks like an aged cartographer's chart.
- * Keeps the dev working offline-free and no API key needed.
+ * Crush the OSM base into a muted, near-black backdrop so the trains
+ * and rails read as the foreground. grayscale strips color, brightness
+ * darkens dramatically, a touch of blue via hue-rotate.
  */
 
 .leaflet-container {
@@ -51,15 +52,27 @@ body {
 
 .leaflet-tile-pane {
   filter:
-    sepia(0.75)
-    saturate(1.35)
-    hue-rotate(-8deg)
-    brightness(0.62)
-    contrast(1.15);
+    grayscale(0.85)
+    brightness(0.28)
+    contrast(1.3)
+    saturate(0.35)
+    hue-rotate(180deg);
+}
+
+/* Subtle cool overlay for atmospheric depth */
+.leaflet-container::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at center, transparent 30%, rgba(5, 8, 14, 0.45) 100%),
+    linear-gradient(to bottom, rgba(10, 20, 40, 0.08), transparent 30%);
+  z-index: 400; /* below markers (600+) */
 }
 
 .leaflet-control-attribution {
-  background: rgba(26, 20, 13, 0.85) !important;
+  background: rgba(5, 8, 14, 0.85) !important;
   color: var(--muted) !important;
   font-size: 10px !important;
 }
@@ -77,6 +90,7 @@ body {
 
 .leaflet-control-zoom a:hover {
   background: var(--border) !important;
+  color: var(--accent) !important;
 }
 
 .leaflet-popup-content-wrapper {
@@ -84,12 +98,14 @@ body {
   color: var(--text) !important;
   border: 1px solid var(--border) !important;
   border-radius: 8px !important;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6) !important;
+  box-shadow:
+    0 0 0 1px rgba(94, 205, 224, 0.08) inset,
+    0 8px 24px rgba(0, 0, 0, 0.7) !important;
 }
 
 .leaflet-popup-content {
   margin: 10px 12px !important;
-  min-width: 210px;
+  min-width: 220px;
 }
 
 .leaflet-popup-tip {
@@ -106,7 +122,7 @@ body {
   color: var(--text) !important;
 }
 
-/* Popup inner */
+/* Popup inner — built imperatively from buildPopupHTML() */
 .amtrak-popup {
   display: flex;
   flex-direction: column;
@@ -145,7 +161,7 @@ body {
   padding: 4px 8px;
   border-radius: 6px;
   border: 1px solid #6b5224;
-  background: #2d2312;
+  background: #221a0a;
   color: var(--gold);
   font-size: 11px;
 }
@@ -158,14 +174,73 @@ body {
   color: var(--green);
 }
 
+.amtrak-replay-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--accent);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  transition: all 120ms ease;
+}
+
+.amtrak-replay-btn:hover {
+  border-color: var(--accent);
+  background: rgba(94, 205, 224, 0.08);
+  color: var(--accent-hi);
+  box-shadow: 0 0 12px var(--cyan-glow);
+}
+
+.amtrak-replay-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* ---------- Rail tracks ---------- */
 
 .amtrak-track {
-  stroke: rgba(197, 165, 114, 0.32);
+  stroke: rgba(94, 205, 224, 0.28);
   stroke-width: 1.6;
   stroke-dasharray: 6 5;
   fill: none;
   pointer-events: none;
+}
+
+/* ---------- Station markers ---------- */
+
+.amtrak-station {
+  fill: var(--accent);
+  fill-opacity: 0.55;
+  stroke: var(--accent);
+  stroke-opacity: 0.9;
+  stroke-width: 1;
+  filter: drop-shadow(0 0 3px var(--cyan-glow));
+}
+
+.amtrak-station-active {
+  fill: var(--accent-hi);
+  fill-opacity: 0.85;
+  stroke: var(--accent-hi);
+  animation: station-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes station-pulse {
+  0%,
+  100% {
+    stroke-opacity: 0.9;
+    stroke-width: 1;
+  }
+  50% {
+    stroke-opacity: 0.6;
+    stroke-width: 4;
+  }
 }
 
 /* ---------- Train figure (locomotive) ---------- */
@@ -174,10 +249,10 @@ body {
   position: relative;
   width: 100%;
   height: 100%;
-  color: var(--accent);  /* brass at rest */
+  color: #c5d4e0; /* cool silver at rest */
   transform: rotate(var(--rot, 0deg));
   transform-origin: 50% 50%;
-  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.7));
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.8));
   transition: color 400ms ease;
   overflow: visible;
 }
@@ -204,21 +279,17 @@ body {
   }
 }
 
-/* ---------- ANGRY mode: train in motion ---------- */
+/* ANGRY mode: train in motion */
 
 .train-figure--moving {
   color: var(--ember-hot);
   animation: angry-rumble 160ms linear infinite;
   filter:
-    drop-shadow(0 0 8px rgba(255, 109, 30, 0.65))
-    drop-shadow(0 0 2px rgba(255, 180, 80, 0.6))
+    drop-shadow(0 0 10px rgba(255, 77, 26, 0.7))
+    drop-shadow(0 0 2px rgba(255, 180, 80, 0.7))
     drop-shadow(0 1px 2px rgba(0, 0, 0, 0.8));
 }
 
-/* A short back-and-forth jitter so the train looks like it's straining forward.
- * Rotation keeps the heading; we only apply a tiny translate on the CHILD SVG
- * by piggy-backing on a second CSS variable. Cheap to compute, reads as grit.
- */
 .train-figure--moving svg {
   animation: angry-shake 170ms ease-in-out infinite;
   transform-origin: center;
@@ -236,19 +307,18 @@ body {
   0%,
   100% {
     filter:
-      drop-shadow(0 0 8px rgba(255, 109, 30, 0.55))
-      drop-shadow(0 0 2px rgba(255, 180, 80, 0.55))
+      drop-shadow(0 0 10px rgba(255, 77, 26, 0.6))
+      drop-shadow(0 0 2px rgba(255, 180, 80, 0.6))
       drop-shadow(0 1px 2px rgba(0, 0, 0, 0.8));
   }
   50% {
     filter:
-      drop-shadow(0 0 14px rgba(255, 109, 30, 0.95))
-      drop-shadow(0 0 4px rgba(255, 200, 100, 0.75))
+      drop-shadow(0 0 18px rgba(255, 77, 26, 1))
+      drop-shadow(0 0 4px rgba(255, 200, 100, 0.8))
       drop-shadow(0 1px 2px rgba(0, 0, 0, 0.8));
   }
 }
 
-/* When saved AND moving: keep the pulse halo, but the angry color wins. */
 .train-figure--saved.train-figure--moving {
   color: var(--ember-hot);
   animation:
@@ -268,14 +338,12 @@ body {
 }
 
 .train-figure__puff {
-  /* Steam color overridden per-state below */
   fill: var(--steam);
   transform-box: fill-box;
   transform-origin: center;
   opacity: 0;
 }
 
-/* Angry smoke = sooty dark gray with faint orange undertone. */
 .train-figure--moving .train-figure__puff {
   fill: rgba(30, 22, 18, 0.95);
   animation: steam-puff 1.1s cubic-bezier(0.2, 0.7, 0.2, 1) infinite;
@@ -283,7 +351,7 @@ body {
 
 .train-figure--moving .train-figure__puff--2 {
   animation-delay: 0.35s;
-  fill: rgba(68, 44, 30, 0.9);  /* slightly browner (ember-lit underside) */
+  fill: rgba(68, 44, 30, 0.9);
 }
 
 .train-figure--moving .train-figure__puff--3 {
@@ -303,6 +371,22 @@ body {
     opacity: 0;
     transform: translate(-3px, -22px) scale(2);
   }
+}
+
+/* ---------- Replay trail ---------- */
+
+.amtrak-replay-trail {
+  stroke: var(--accent-hi);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  fill: none;
+  filter: drop-shadow(0 0 6px var(--cyan-glow));
+  pointer-events: none;
+}
+
+.amtrak-replay-ghost {
+  fill: var(--accent-hi);
+  filter: drop-shadow(0 0 10px var(--cyan-glow));
 }
 
 /* ---------- History slider ---------- */
@@ -325,7 +409,7 @@ body {
   border-radius: 50%;
   background: var(--accent);
   border: 2px solid var(--bg);
-  box-shadow: 0 0 0 1px var(--border);
+  box-shadow: 0 0 0 1px var(--border), 0 0 10px var(--cyan-glow);
   cursor: grab;
   transition: transform 120ms ease;
 }
@@ -341,7 +425,7 @@ body {
   border-radius: 50%;
   background: var(--accent);
   border: 2px solid var(--bg);
-  box-shadow: 0 0 0 1px var(--border);
+  box-shadow: 0 0 0 1px var(--border), 0 0 10px var(--cyan-glow);
   cursor: grab;
 }
 
