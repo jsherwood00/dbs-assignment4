@@ -48,10 +48,49 @@ async function pollOnce() {
 
     if (error) throw error;
 
+    // Append to the history table for the "scrub back in time" slider.
+    // Stations / raw jsonb are intentionally NOT logged — frontend only needs
+    // lat/lon/heading/velocity/status/route to render a historical snapshot,
+    // and keeping rows small keeps storage manageable.
+    const historyRows = rows
+      .filter((r) => typeof r.lat === "number" && typeof r.lon === "number")
+      .map((r) => ({
+        train_id: r.id,
+        train_num: r.train_num,
+        route_name: r.route_name,
+        lat: r.lat,
+        lon: r.lon,
+        heading: r.heading,
+        velocity: r.velocity,
+        status: r.status,
+      }));
+
+    if (historyRows.length > 0) {
+      const { error: histError } = await supabase
+        .from("train_positions")
+        .insert(historyRows);
+      if (histError) {
+        console.error(
+          log("warn", `history insert failed: ${histError.message}`),
+        );
+        // non-fatal — the live pipeline still works
+      }
+    }
+
+    // Prune older than 1 hour so storage doesn't grow unbounded.
+    const cutoff = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const { error: pruneError } = await supabase
+      .from("train_positions")
+      .delete()
+      .lt("snapshot_at", cutoff);
+    if (pruneError) {
+      console.error(log("warn", `history prune failed: ${pruneError.message}`));
+    }
+
     console.log(
       log(
         "info",
-        `upserted ${rows.length} trains in ${Date.now() - startedAt}ms`,
+        `upserted ${rows.length} trains + logged ${historyRows.length} positions in ${Date.now() - startedAt}ms`,
       ),
     );
   } catch (err) {

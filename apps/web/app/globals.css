@@ -304,3 +304,53 @@ body {
     transform: translate(-3px, -22px) scale(2);
   }
 }
+
+/* ---------- History slider ---------- */
+
+.history-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  background: var(--border);
+  border-radius: 999px;
+  outline: none;
+  cursor: pointer;
+}
+
+.history-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg);
+  box-shadow: 0 0 0 1px var(--border);
+  cursor: grab;
+  transition: transform 120ms ease;
+}
+
+.history-slider::-webkit-slider-thumb:active {
+  cursor: grabbing;
+  transform: scale(1.1);
+}
+
+.history-slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg);
+  box-shadow: 0 0 0 1px var(--border);
+  cursor: grab;
+}
+
+.history-slider::-moz-range-thumb:active {
+  cursor: grabbing;
+}
+
+.history-slider::-moz-range-track {
+  height: 4px;
+  background: var(--border);
+  border-radius: 999px;
+}

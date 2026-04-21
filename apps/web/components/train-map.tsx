@@ -8,23 +8,26 @@ import type { AmtrakerStation, Train, SavedPair } from "@/lib/types";
 import { headingToDegrees } from "@/lib/heading";
 import { trainMatchesAnyPair } from "@/lib/pair";
 import { getStationMap, loadStations } from "@/lib/stations";
-import { useTrains } from "./trains-context";
+import { useTrains, type ViewMode } from "./trains-context";
 import { buildPopupHTML, buildTrainFigureHTML } from "./train-figure";
+import { HistorySlider } from "./history-slider";
 
 const INITIAL_CENTER: [number, number] = [39, -96];
 const INITIAL_ZOOM = 4;
-const ANIMATION_DURATION_MS = 15_000;
-// Minimum lat/lon delta (degrees) to consider a train "moved" vs. GPS jitter.
-// 0.0001° is roughly 11 meters — well under a typical Amtrak 30s travel distance
-// (>600m even at slow speeds) but above civilian GPS jitter (~5m).
-const MIN_LATLON_DELTA = 1e-4;
+const ANIMATION_DURATION_MS = 5_000;
+// Minimum on-the-ground distance (meters) between consecutive positions for
+// a train to count as "actually moving" and get the angry / powering visual.
+// Well above civilian GPS jitter (~5–15 m) and well under even a crawling
+// train's 15 s travel distance (>30 m at 5 mph, >300 m at 50 mph), so real
+// motion lights up but GPS noise doesn't.
+const MIN_MOVE_METERS = 60;
 
 interface TrainMapProps {
   savedPairs?: SavedPair[];
 }
 
 export default function TrainMap({ savedPairs = [] }: TrainMapProps) {
-  const { trains, loading, error } = useTrains();
+  const { trains, loading, error, viewMode } = useTrains();
   const hasVisibleTrains = trains.some(
     (t) =>
       typeof t.lat === "number" &&
@@ -49,16 +52,30 @@ export default function TrainMap({ savedPairs = [] }: TrainMapProps) {
         />
         <ZoomControlBottomRight />
         <TrackLayer trains={trains} />
-        <AnimatedTrainsLayer trains={trains} savedPairs={savedPairs} />
+        <AnimatedTrainsLayer
+          trains={trains}
+          savedPairs={savedPairs}
+          viewMode={viewMode}
+        />
       </MapContainer>
 
       {loading ? (
-        <StatusPill>Loading live trains…</StatusPill>
+        <StatusPill>
+          {viewMode.kind === "live"
+            ? "Loading live trains…"
+            : "Loading historical snapshot…"}
+        </StatusPill>
       ) : error ? (
         <StatusPill tone="error">Failed to load: {error}</StatusPill>
       ) : !hasVisibleTrains ? (
-        <StatusPill tone="warn">No active trains right now.</StatusPill>
+        <StatusPill tone="warn">
+          {viewMode.kind === "live"
+            ? "No active trains right now."
+            : "No data captured at that time yet."}
+        </StatusPill>
       ) : null}
+
+      <HistorySlider />
     </div>
   );
 }
@@ -209,16 +226,19 @@ interface MarkerState {
 interface AnimatedTrainsLayerProps {
   trains: Train[];
   savedPairs: SavedPair[];
+  viewMode: ViewMode;
 }
 
 function AnimatedTrainsLayer({
   trains,
   savedPairs,
+  viewMode,
 }: AnimatedTrainsLayerProps) {
   const map = useMap();
   const layerRef = useRef<L.LayerGroup | null>(null);
   const statesRef = useRef<Map<string, MarkerState>>(new Map());
   const rafRef = useRef<number | null>(null);
+  const isHistory = viewMode.kind === "history";
 
   // Create layer group once
   useEffect(() => {
@@ -230,6 +250,19 @@ function AnimatedTrainsLayer({
       statesRef.current.clear();
     };
   }, [map]);
+
+  // When view mode switches, clear all markers so the next render starts fresh
+  // (avoids animating from live position to a 45-min-ago position).
+  const viewKey =
+    viewMode.kind === "live" ? "live" : `history:${viewMode.at}`;
+  useEffect(() => {
+    const lg = layerRef.current;
+    if (!lg) return;
+    statesRef.current.forEach((state) => {
+      lg.removeLayer(state.marker);
+    });
+    statesRef.current.clear();
+  }, [viewKey]);
 
   // Sync markers with trains on every update
   useEffect(() => {
@@ -289,21 +322,36 @@ function AnimatedTrainsLayer({
         // Existing marker — refresh popup always (data may have changed)
         state.marker.setPopupContent(buildPopupHTML(train, matchedPair));
 
-        // If target moved, start / retarget an animation FROM the currently-displayed position
-        const latDelta = Math.abs(train.lat - state.targetLat);
-        const lonDelta = Math.abs(train.lon - state.targetLon);
-        if (latDelta > MIN_LATLON_DELTA || lonDelta > MIN_LATLON_DELTA) {
+        if (isHistory) {
+          // Static snapshot — snap to new position, no animation, never "angry".
+          state.displayLat = train.lat;
+          state.displayLon = train.lon;
           state.targetLat = train.lat;
           state.targetLon = train.lon;
-          state.anim = {
-            startLat: state.displayLat,
-            startLon: state.displayLon,
-            start: performance.now(),
-          };
+          state.anim = null;
+          state.marker.setLatLng([train.lat, train.lon]);
+        } else {
+          // Live: if the train actually moved on-the-ground, start / retarget an
+          // animation FROM the currently-displayed position.
+          const movedMeters = approxMeters(
+            state.targetLat,
+            state.targetLon,
+            train.lat,
+            train.lon,
+          );
+          if (movedMeters > MIN_MOVE_METERS) {
+            state.targetLat = train.lat;
+            state.targetLon = train.lon;
+            state.anim = {
+              startLat: state.displayLat,
+              startLon: state.displayLon,
+              start: performance.now(),
+            };
+          }
         }
 
         // Rebuild icon only when heading / saved / moving state changes
-        const moving = state.anim !== null;
+        const moving = !isHistory && state.anim !== null;
         const nextKey = iconCacheKey(headingDeg, isSaved, moving);
         if (nextKey !== state.lastIconKey) {
           state.marker.setIcon(
@@ -383,4 +431,19 @@ function iconCacheKey(
 
 function easeInOutCubic(t: number): number {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+
+// Flat-earth approximation of distance in meters between two lat/lon points.
+// Accurate enough below ~10 km; we only care about movement vs. GPS noise.
+function approxMeters(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
+): number {
+  const latMetersPerDeg = 111_000;
+  const lonMetersPerDeg = 111_000 * Math.cos((lat1 * Math.PI) / 180);
+  const dLat = (lat2 - lat1) * latMetersPerDeg;
+  const dLon = (lon2 - lon1) * lonMetersPerDeg;
+  return Math.sqrt(dLat * dLat + dLon * dLon);
 }

@@ -4,13 +4,25 @@ import { useEffect, useState } from "react";
 import { useTrains } from "./trains-context";
 
 export function FreshnessBadge() {
-  const { lastUpdatedAt, loading } = useTrains();
+  const { lastUpdatedAt, loading, viewMode } = useTrains();
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, []);
+
+  if (viewMode.kind === "history") {
+    const minsBack = Math.max(0, Math.round((now - viewMode.at) / 60_000));
+    const label =
+      minsBack < 1 ? "just now" : minsBack === 1 ? "1 min ago" : `${minsBack} min ago`;
+    return (
+      <span className="hidden items-center gap-1.5 rounded-full border border-[#6b5224] bg-[#2d2312] px-2.5 py-1 text-[11px] uppercase tracking-wider text-[#f0c565] md:inline-flex">
+        <Dot className="bg-[#f0c565]" />
+        history · {label}
+      </span>
+    );
+  }
 
   if (loading) {
     return (
