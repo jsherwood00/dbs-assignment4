@@ -96,12 +96,6 @@ export function SavedTrainsPanel({
         >
           Sign up free
         </Link>
-        <Link
-          href="/login"
-          className="mt-2 block text-center text-[11px] text-[#5a6d82] hover:text-[#d8e4f0]"
-        >
-          or log in
-        </Link>
       </aside>
     );
   }
