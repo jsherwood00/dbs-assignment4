@@ -652,7 +652,7 @@ function ReplayAllLayer() {
       const lastHeadingById = new Map<string, number>();
       let lastStatusReport = -1;
 
-      reportStatus("playing", "Replaying 1h · 0%", 0);
+      reportStatus("playing", "Replaying · 0/60 min", 0);
 
       let rafId = 0;
       const animStart = performance.now();
@@ -735,9 +735,10 @@ function ReplayAllLayer() {
 
         // Throttle status updates to ~3/s so we don't thrash React.
         if (elapsed - lastStatusReport > 300) {
+          const minsIn = Math.min(60, Math.round(progress * 60));
           reportStatus(
             "playing",
-            `Replaying 1h · ${Math.round(progress * 100)}%`,
+            `Replaying · ${minsIn}/60 min`,
             progress,
           );
           lastStatusReport = elapsed;
