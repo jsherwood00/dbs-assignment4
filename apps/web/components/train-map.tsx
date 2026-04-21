@@ -617,7 +617,7 @@ function ReplayAllLayer() {
           icon: buildIcon(seedHeading),
           interactive: false,
           zIndexOffset: 1500,
-          opacity: 0, // hidden until virtual time reaches this train's data range
+          opacity: 0.25, // start dimmed (before first sample); RAF will brighten
         }).addTo(lg);
         ghosts.set(id, g);
         isSavedById.set(id, false);
@@ -670,38 +670,70 @@ function ReplayAllLayer() {
           const first = points[0];
           const last = points[points.length - 1];
 
-          const inRange = virtualSec >= first.t && virtualSec <= last.t;
-          if (lastVisibleById.get(id) !== inRange) {
-            const el = g.getElement() as HTMLElement | null;
-            if (el) el.style.opacity = inRange ? "1" : "0";
-            lastVisibleById.set(id, inRange);
-          }
-          if (!inRange) return;
+          // Always render every train. Three cases:
+          //   1. virtualSec before first sample: clamp at first, opacity-dim
+          //      so it reads as "not yet started its run".
+          //   2. virtualSec after last sample: clamp at last, opacity-dim
+          //      ("already completed its run").
+          //   3. In range: cursor-advance and interpolate between the two
+          //      bracketing samples.
+          let lat: number;
+          let lon: number;
+          let segmentA = first;
+          let segmentB = first;
+          let dimmed = false;
 
-          // Advance cursor monotonically.
-          let i = cursorById.get(id) ?? 0;
-          while (
-            i < points.length - 1 &&
-            points[i + 1].t <= virtualSec
-          ) {
-            i++;
-          }
-          cursorById.set(id, i);
+          if (virtualSec <= first.t) {
+            lat = first.lat;
+            lon = first.lon;
+            dimmed = true;
+          } else if (virtualSec >= last.t) {
+            lat = last.lat;
+            lon = last.lon;
+            dimmed = true;
+          } else {
+            // Advance cursor monotonically.
+            let i = cursorById.get(id) ?? 0;
+            while (
+              i < points.length - 1 &&
+              points[i + 1].t <= virtualSec
+            ) {
+              i++;
+            }
+            cursorById.set(id, i);
 
-          const a = points[i];
-          const b = points[Math.min(i + 1, points.length - 1)];
-          const span = b.t - a.t;
-          const frac = span > 0
-            ? Math.max(0, Math.min(1, (virtualSec - a.t) / span))
-            : 0;
-          const lat = a.lat + (b.lat - a.lat) * frac;
-          const lon = a.lon + (b.lon - a.lon) * frac;
+            segmentA = points[i];
+            segmentB = points[Math.min(i + 1, points.length - 1)];
+            const span = segmentB.t - segmentA.t;
+            const frac = span > 0
+              ? Math.max(0, Math.min(1, (virtualSec - segmentA.t) / span))
+              : 0;
+            lat = segmentA.lat + (segmentB.lat - segmentA.lat) * frac;
+            lon = segmentA.lon + (segmentB.lon - segmentA.lon) * frac;
+          }
+
           g.setLatLng([lat, lon]);
 
-          // Heading follows the current segment direction. Only rebuild
-          // the icon when direction shifts noticeably.
-          if (span > 0 && approxMeters(a.lat, a.lon, b.lat, b.lon) > 40) {
-            const heading = bearingDeg(a.lat, a.lon, b.lat, b.lon);
+          // Toggle dim only when the boolean flips.
+          const wasDim = lastVisibleById.get(id) === false;
+          if (wasDim !== dimmed) {
+            const el = g.getElement() as HTMLElement | null;
+            if (el) el.style.opacity = dimmed ? "0.25" : "1";
+            lastVisibleById.set(id, !dimmed);
+          }
+
+          // Heading update only when inside the data range and the
+          // segment has enough distance to establish a direction.
+          if (
+            !dimmed &&
+            approxMeters(segmentA.lat, segmentA.lon, segmentB.lat, segmentB.lon) > 40
+          ) {
+            const heading = bearingDeg(
+              segmentA.lat,
+              segmentA.lon,
+              segmentB.lat,
+              segmentB.lon,
+            );
             const lastH = lastHeadingById.get(id) ?? -999;
             if (Math.abs(heading - lastH) > 10) {
               g.setIcon(buildIcon(heading));
