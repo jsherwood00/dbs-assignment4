@@ -544,39 +544,38 @@ function ReplayAllLayer() {
         return;
       }
 
-      reportStatus("preparing", "Bucketing frames…");
+      reportStatus("preparing", "Preparing frames…");
 
-      // ---- Bucket into 30 frames of 2-minute windows.
-      const FRAMES = 30;
-      const BUCKET_SEC = 2 * 60;
+      // ---- No bucketing, no carry-forward. For each train we keep the raw
+      // (lat, lon, t) samples sorted by t. The animation interpolates between
+      // whatever two samples bracket the current virtual time, which means
+      // data gaps are played as continuous motion through the gap (not a
+      // pause at the last known point). A train that was actually parked
+      // reports the same (lat, lon) across multiple samples, and that still
+      // interpolates to itself — parked trains stay parked.
       const endSec = Math.floor(Date.now() / 1000);
       const startSec = endSec - 60 * 60;
 
-      // Per-train: array of [lat, lon] indexed by frame (or null)
-      const perTrain = new Map<string, Array<[number, number] | null>>();
-      for (const trainId of trainIds) {
-        const positions = byTrain[trainId];
-        if (!Array.isArray(positions)) continue;
-        const arr = new Array<[number, number] | null>(FRAMES).fill(null);
-        for (const p of positions) {
-          if (typeof p.lat !== "number" || typeof p.lon !== "number") continue;
-          const idx = Math.floor((p.t - startSec) / BUCKET_SEC);
-          if (idx < 0 || idx >= FRAMES) continue;
-          // Last position within the bucket wins (positions are ordered asc).
-          arr[idx] = [p.lat, p.lon];
-        }
-        perTrain.set(trainId, arr);
+      interface TrainPoint {
+        lat: number;
+        lon: number;
+        t: number;
       }
-
-      // Carry-forward fill so every train has a position at every frame
-      // after its first sighting.
-      perTrain.forEach((arr) => {
-        let last: [number, number] | null = null;
-        for (let i = 0; i < FRAMES; i++) {
-          if (arr[i] === null) arr[i] = last;
-          else last = arr[i];
+      const perTrain = new Map<string, TrainPoint[]>();
+      for (const trainId of trainIds) {
+        const raw = byTrain[trainId];
+        if (!Array.isArray(raw) || raw.length === 0) continue;
+        const points: TrainPoint[] = [];
+        for (const p of raw) {
+          if (typeof p.lat !== "number" || typeof p.lon !== "number") continue;
+          if (typeof p.t !== "number") continue;
+          points.push({ lat: p.lat, lon: p.lon, t: p.t });
         }
-      });
+        if (points.length === 0) continue;
+        // RPC returns ordered, but defend against that changing.
+        points.sort((a, b) => a.t - b.t);
+        perTrain.set(trainId, points);
+      }
 
       // Resolve per-train heading (use the current live train's heading as
       // a fallback; for the replay we recompute it per-step from motion).
@@ -610,15 +609,15 @@ function ReplayAllLayer() {
       // Seed at the first known position per train. No trails — just the
       // locomotives. (trails/trailCoords are still declared above but
       // intentionally unused in this no-effects pass.)
-      perTrain.forEach((arr, id) => {
-        const first = arr.find((p) => p !== null) ?? null;
-        if (!first) return;
+      perTrain.forEach((points, id) => {
+        const first = points[0];
         const seedHeadingStr = headingById.get(id);
         const seedHeading = seedHeadingStr ? headingToDegrees(seedHeadingStr) : 0;
-        const g = L.marker(first, {
+        const g = L.marker([first.lat, first.lon], {
           icon: buildIcon(seedHeading),
           interactive: false,
           zIndexOffset: 1500,
+          opacity: 0, // hidden until virtual time reaches this train's data range
         }).addTo(lg);
         ghosts.set(id, g);
         isSavedById.set(id, false);
@@ -630,16 +629,29 @@ function ReplayAllLayer() {
       // ---- Hide live markers while the replay owns the stage.
       setReplayAllActive(true);
 
-      // ---- Smooth RAF animation over 10 s.
-      // At wall-clock time t in [0, TOTAL_MS], map to a virtual bucket
-      // position v in [0, FRAMES-1]. We interpolate linearly between
-      // bucket floor(v) and bucket ceil(v). Heading per train is
-      // recomputed only when the pair of buckets we're blending changes,
-      // so we're not rebuilding icons every RAF tick.
+      // ---- Smooth RAF animation over 10 s using actual wall-clock
+      // timestamps, not buckets.
+      //
+      // For each train we keep a monotonically advancing cursor i such
+      // that points[i].t <= virtualSec < points[i+1].t. On each frame we
+      // advance the cursor forward (O(1) amortized) and linearly blend
+      // between points[i] and points[i+1] by
+      //     frac = (virtualSec - points[i].t) / (points[i+1].t - points[i].t)
+      //
+      // Consequences:
+      //   - Trains with a gap in their snapshots (worker paused, amtraker
+      //     hiccup, etc.) glide smoothly across the gap instead of
+      //     pausing at the last known point.
+      //   - A train that actually reported the same (lat, lon) twice
+      //     still interpolates to itself — so parked trains stay parked.
+      //   - A train outside its data range (its run started mid-hour, or
+      //     it completed mid-hour) stays hidden at opacity 0 until its
+      //     data window begins / after it ends.
       const TOTAL_MS = 10_000;
       let cancelled = false;
-      const lastBucketPairById = new Map<string, number>();
+      const cursorById = new Map<string, number>();
       const lastHeadingById = new Map<string, number>();
+      const lastVisibleById = new Map<string, boolean>();
       let lastStatusReport = -1;
 
       reportStatus("playing", "Replaying 1h · 0%", 0);
@@ -650,33 +662,50 @@ function ReplayAllLayer() {
         if (cancelled) return;
         const elapsed = nowTs - animStart;
         const progress = Math.min(1, elapsed / TOTAL_MS);
-        const v = progress * (FRAMES - 1);
-        const iA = Math.min(FRAMES - 2, Math.floor(v));
-        const iB = iA + 1;
-        const frac = v - iA;
+        const virtualSec = startSec + progress * (endSec - startSec);
 
-        perTrain.forEach((arr, id) => {
-          const a = arr[iA];
-          const b = arr[iB];
-          if (!a || !b) return;
+        perTrain.forEach((points, id) => {
           const g = ghosts.get(id);
           if (!g) return;
-          const lat = a[0] + (b[0] - a[0]) * frac;
-          const lon = a[1] + (b[1] - a[1]) * frac;
+          const first = points[0];
+          const last = points[points.length - 1];
+
+          const inRange = virtualSec >= first.t && virtualSec <= last.t;
+          if (lastVisibleById.get(id) !== inRange) {
+            const el = g.getElement() as HTMLElement | null;
+            if (el) el.style.opacity = inRange ? "1" : "0";
+            lastVisibleById.set(id, inRange);
+          }
+          if (!inRange) return;
+
+          // Advance cursor monotonically.
+          let i = cursorById.get(id) ?? 0;
+          while (
+            i < points.length - 1 &&
+            points[i + 1].t <= virtualSec
+          ) {
+            i++;
+          }
+          cursorById.set(id, i);
+
+          const a = points[i];
+          const b = points[Math.min(i + 1, points.length - 1)];
+          const span = b.t - a.t;
+          const frac = span > 0
+            ? Math.max(0, Math.min(1, (virtualSec - a.t) / span))
+            : 0;
+          const lat = a.lat + (b.lat - a.lat) * frac;
+          const lon = a.lon + (b.lon - a.lon) * frac;
           g.setLatLng([lat, lon]);
 
-          // Only rebuild icon when the bucket pair changed AND the two
-          // points differ meaningfully (so we get a real heading).
-          const pairKey = iA;
-          if (lastBucketPairById.get(id) !== pairKey) {
-            lastBucketPairById.set(id, pairKey);
-            if (approxMeters(a[0], a[1], b[0], b[1]) > 40) {
-              const heading = bearingDeg(a[0], a[1], b[0], b[1]);
-              const lastH = lastHeadingById.get(id) ?? -999;
-              if (Math.abs(heading - lastH) > 10) {
-                g.setIcon(buildIcon(heading));
-                lastHeadingById.set(id, heading);
-              }
+          // Heading follows the current segment direction. Only rebuild
+          // the icon when direction shifts noticeably.
+          if (span > 0 && approxMeters(a.lat, a.lon, b.lat, b.lon) > 40) {
+            const heading = bearingDeg(a.lat, a.lon, b.lat, b.lon);
+            const lastH = lastHeadingById.get(id) ?? -999;
+            if (Math.abs(heading - lastH) > 10) {
+              g.setIcon(buildIcon(heading));
+              lastHeadingById.set(id, heading);
             }
           }
         });
