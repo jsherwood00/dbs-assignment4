@@ -7,13 +7,11 @@ dist/
 out/
 build/
 
-# Environment files — NEVER commit secrets
+# Environment files — NEVER commit secrets.
+# Ignore everything starting with ".env" EXCEPT .env.example (the template).
 .env
-.env.local
-.env.*.local
-.env.development
-.env.production
 .env.*
+!.env.example
 
 # Runtime
 *.log

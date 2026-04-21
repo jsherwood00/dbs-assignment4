@@ -1,0 +1,16 @@
+{
+  "name": "amtrak-tracker-worker",
+  "version": "0.1.0",
+  "description": "Polls api.amtraker.com and upserts live train positions into Supabase.",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --env-file=.env.local index.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.104.0"
+  },
+  "engines": {
+    "node": ">=20.6.0"
+  }
+}
