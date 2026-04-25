@@ -18,7 +18,7 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
 const POLL_URL = AMTRAKER_URL || "https://api.amtraker.com/v3/trains";
 const POLL_INTERVAL = Math.max(
   5000,
-  parseInt(POLL_INTERVAL_MS || "15000", 10) || 15000,
+  parseInt(POLL_INTERVAL_MS || "300000", 10) || 300000,
 );
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {

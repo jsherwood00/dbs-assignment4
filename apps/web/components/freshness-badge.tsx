@@ -62,15 +62,19 @@ function Dot({ className }: { className?: string }) {
   );
 }
 
+// Thresholds tuned for the worker's 5-minute poll cadence:
+//   green  while we're inside one normal poll cycle (<6 min)
+//   amber  if a poll's been delayed (<12 min)
+//   red    if we've missed multiple polls (>12 min) — something's broken
 function classify(ageMs: number) {
-  if (ageMs < 90_000) {
+  if (ageMs < 6 * 60_000) {
     return {
       classes: "border-[#225a3f] bg-[#0d2418] text-[#64e2a4]",
       dot: "bg-[#64e2a4]",
       pulse: true,
     };
   }
-  if (ageMs < 5 * 60_000) {
+  if (ageMs < 12 * 60_000) {
     return {
       classes: "border-[#6b5224] bg-[#221a0a] text-[#f0c565]",
       dot: "bg-[#f0c565]",

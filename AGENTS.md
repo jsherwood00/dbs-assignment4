@@ -12,7 +12,7 @@ Built for MPCS 51238 (Design, Build, Ship) · Week 4 Assignment · Spring 2026.
 
 ```
 api.amtraker.com (unofficial community-run Amtrak API)
-         ↑ HTTP GET every 15 s
+         ↑ HTTP GET every 5 min
     Railway Worker (Node.js)
          ↓ upsert
    Supabase (Postgres + Auth + Realtime)
@@ -162,7 +162,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
 ```
 SUPABASE_URL=https://xxx.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=eyJ...
-POLL_INTERVAL_MS=15000
+POLL_INTERVAL_MS=300000
 ```
 
 **Hard rule:** service role key never reaches the browser. `.gitignore` ignores every `.env*` file except `.env.example`.
@@ -236,7 +236,7 @@ POLL_INTERVAL_MS=15000
 **File:** `apps/worker/index.js`
 
 1. On startup: immediate fetch + upsert (don't wait for first interval).
-2. Every `POLL_INTERVAL_MS` (15 s default): fetch `https://api.amtraker.com/v3/trains`.
+2. Every `POLL_INTERVAL_MS` (5 min default — matches amtraker's upstream GPS cadence): fetch `https://api.amtraker.com/v3/trains`.
 3. Amtraker's `/v3/trains` returns `{ "<trainNum>": [ {...train}, {...train} ] }` — flatten array-of-arrays.
 4. Parse: `t.trainID` is the stable PK (not `objectID` as the older doc claimed). `t.trainNum` is a string — `parseInt` it.
 5. Upsert into `trains` on conflict `id`.
@@ -268,7 +268,7 @@ POLL_INTERVAL_MS=15000
 
 1. New Project → Deploy from GitHub.
 2. **Root Directory: `apps/worker`**.
-3. Env vars: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `POLL_INTERVAL_MS=15000`.
+3. Env vars: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `POLL_INTERVAL_MS=300000` (5 min).
 4. If Railpack errors on "build plan": the included `nixpacks.toml` at `apps/worker/` spells out the plan (`node index.js`).
 
 ### Supabase
